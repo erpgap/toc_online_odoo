@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+   <data>
+      <!-- Herança da view de Configurações para adicionar a seção "TOConline Configuração" -->
+      <record id="res_config_settings_view_form_toc_online" model="ir.ui.view">
+         <field name="name">res.config.settings.view.form.toc_online</field>
+         <field name="model">res.config.settings</field>
+         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+         <field name="priority" eval="50"/>
+         <field name="arch" type="xml">
+            <xpath expr="//app[@name='account']" position="inside">
+               <block title="TOConline Configuração" id="toc_online_settings" groups="account.group_account_manager">
+                  <div class="row mt16">
+                     <div class="col-6">
+                        <setting string="ID do Cliente TOConline">
+                           <field name="toc_online_client_id"
+                               string="ID do Cliente TOConline"
+                               config_parameter="toc_online.client_id"/>
+                        </setting>
+
+                     </div>
+                     <div class="col-6">
+                        <setting string="Segredo do Cliente TOConline">
+                           <field name="toc_online_client_secret"
+                               string="Segredo do Cliente TOConline"
+                               config_parameter="toc_online.client_secret"/>
+                        </setting>
+
+                     </div>
+                  </div>
+                  <!-- Os tokens são atualizados via OAuth, não sendo esperada edição manual -->
+                  <div class="row mt16">
+                     <div class="col-6">
+                        <field name="toc_online_access_token"
+                               string="Access Token"
+                               readonly="1"
+                               config_parameter="toc_online.access_token"/>
+                     </div>
+                     <div class="col-6">
+                        <field name="toc_online_refresh_token"
+                               string="Refresh Token"
+                               readonly="1"
+                               config_parameter="toc_online.refresh_token"/>
+                     </div>
+                  </div>
+               </block>
+            </xpath>
+         </field>
+      </record>
+   </data>
+</odoo>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_move_form_credit_note_button" model="ir.ui.view">
+        <field name="name">account.move.form.credit.note.button</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <!-- Corrige a referência para o cabeçalho -->
+            <xpath expr="//form/header" position="inside">
+                <button name="action_send_credit_note_to_toconline"
+                        string="Enviar Nota de Crédito"
+                        type="object"
+                        class="oe_highlight"
+                        groups="account.group_account_invoice"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
