@@ -22,7 +22,7 @@ class CreditNote(models.Model):
              #   raise UserError("A nota de crédito precisa estar associada a uma fatura para ser enviada.")
 
 
-            print("aiiiiiiiiiiiiiiiiiiiiiii")
+            print("aiiiiiiiiiiiiiiiiiiiiii")
             access_token1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
             client_id1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
 
