@@ -6,12 +6,12 @@
     <field name="arch" type="xml">
       <xpath expr="//div[@class='oe_title']" position="replace">
         <div class="oe_title">
-          <span class="o_form_label"><field name="move_type" readonly="1" invisible="move_type == 'entry'" nolabel="1"/></span>
-
-          <div class="text-warning" invisible="not show_name_warning">O número atual é <field class="oe_inline" name="highest_name"/>. Pode ser necessário colocar um número mais alto aqui.</div>
+          <span class="o_form_label">
+            <field name="move_type" readonly="1" invisible="move_type == 'entry'" nolabel="1"/>
+          </span>
 
           <h1>
-            <field name="toc_document_no" invisible="not toc_document_no" readonly="1" />
+            <field name="toc_document_no" invisible="not toc_document_no" readonly="1"/>
             <span invisible="toc_document_no">Rascunho</span>
           </h1>
         </div>
@@ -31,6 +31,41 @@
           <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;" invisible="state != 'posted'"/>
           <field name="checkbox" class="my-green-checkbox" readonly="toc_status == 'sent'" invisible="state != 'posted'"/>
         </div>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="view_account_invoice_filter_toconline" model="ir.ui.view">
+    <field name="name">account.invoice.select.toconline</field>
+    <field name="model">account.move</field>
+    <field name="inherit_id" ref="account.view_account_invoice_filter"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="before">
+        <field name="toc_document_no" string="Number"
+               filter_domain="[
+                    '|', '|' , '|', '|',
+                    ('toc_document_no', 'ilike', self), ('invoice_origin', 'ilike', self),
+                    ('ref', 'ilike', self), ('payment_reference', 'ilike', self),
+                    ('partner_id', 'child_of', self)]"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="view_invoice_tree_toconline" model="ir.ui.view">
+    <field name="name">account.invoice.list.toconline</field>
+    <field name="model">account.move</field>
+    <field name="inherit_id" ref="account.view_invoice_tree"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='name']" position="replace">
+        <field name="toc_document_no" decoration-bf="1" decoration-danger="made_sequence_gap and state == 'posted'" widget="char_with_placeholder_field" placeholder="/"/>
+      </xpath>
+
+      <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
+        <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund', 'out_receipt')</attribute>
+      </xpath>
+
+      <xpath expr="//field[@name='amount_total_in_currency_signed']" position="before">
+        <field name="amount_total_in_currency_signed" string="Total (TOConline)" sum="Total"/>
       </xpath>
     </field>
   </record>

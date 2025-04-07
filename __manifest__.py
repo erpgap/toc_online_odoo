@@ -11,7 +11,11 @@
         'views/res_config_settings.xml',
         'views/res_company_views.xml',
         'views/res_partner_views.xml',
-        'views/toc_credit_note.xml'
+        'wizard/toc_account_move_reversal.xml',
+        'views/toc_credit_note.xml',
+        'views/toc_invoice_list.xml',
+
+
     ],
     'assets':{
         'web.assets_backend':[

@@ -1,0 +1,36 @@
+<odoo>
+    <record id="view_credit_note_popup" model="ir.ui.view">
+        <field name="name">credit.note.popup.form</field>
+        <field name="model">credit.note.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Enviar Nota de Crédito">
+                <group>
+                    <field name="invoice_id" invisible="1"/>
+                    <field name="toc_document_no" readonly="1"/>
+                </group>
+
+                <group string="Produto">
+                    <field name="item_code"/>
+                    <field name="description"/>
+                    <field name="quantity"/>
+                    <field name="unit_price"/>
+                    <field name="tax_percentage"/>
+                    <field name="tax_code"/>
+                </group>
+
+                <footer>
+                    <button string="Confirmar" name="action_confirm" type="object" class="btn-primary"/>
+                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_view_credit_note_popup" model="ir.actions.act_window">
+        <field name="name">Enviar Nota de Crédito</field>
+        <field name="res_model">credit.note.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_credit_note_popup"/>
+        <field name="target">new</field>
+    </record>
+</odoo>

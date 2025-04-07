@@ -7,7 +7,7 @@
             <xpath expr="//field[@name='vat']" position="after">
                 <group>
                 <label for="toc_online_id"  />
-                <field name="toc_online_id" string="TOConline ID"/>
+                <field name="toc_online_id" />
                 </group>
             </xpath>
         </field>

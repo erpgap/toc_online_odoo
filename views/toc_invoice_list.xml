@@ -1,0 +1,18 @@
+<odoo>
+  <!--<record id="view_account_invoice_filter_toconline" model="ir.ui.view">
+    <field name="name">account.invoice.select.toconline</field>
+    <field name="model">account.move</field>
+    <field name="inherit_id" ref="account.view_invoice_select"/>
+    <field name="arch" type="xml">
+      &lt;!&ndash; Substituindo apenas o campo 'name' &ndash;&gt;
+      <xpath expr="//field[@name='name']" position="replace">
+        <field name="toc_document_no" string="Invoice"
+               filter_domain="[
+                    '|', '|' , '|', '|',
+                    ('toc_document_no', 'ilike', self), ('invoice_origin', 'ilike', self),
+                    ('ref', 'ilike', self), ('payment_reference', 'ilike', self),
+                    ('partner_id', 'child_of', self)]"/>
+      </xpath>
+    </field>
+  </record>-->
+</odoo>

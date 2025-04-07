@@ -1,2 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_toc_api_user,Toc API Access,model_toc_api,base.group_user,1,0,0,0
+access_credit_note_wizard,credit note wizard,model_credit_note_wizard,base.group_user,1,1,1,1
