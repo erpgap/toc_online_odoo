@@ -13,13 +13,65 @@ class AccountMove(models.Model):
         ('error', 'Erro')
     ], string="Status TOConline", default='draft')
 
+    toc_status_credit_note = fields.Selection([
+        ('draft', 'Rascunho'),
+        ('sent', 'Enviado'),
+        ('error', 'Erro')
+    ], string="Status TOConline", default='draft')
+
     toc_invoice_url = fields.Char(string="URL Fatura TOConline")
     base_url = 'https://api9.toconline.pt'
     checkbox = fields.Boolean(string="Checkbox marcada", default=True)
     toc_document_no = fields.Char(string="Número do Documento TOConline")
+    toc_document_no_credit_note = fields.Char(string="Número da nota de crédito TOC")
+
+    toc_display_number = fields.Char(string="Nº TOC (Visualização)", compute="_compute_toc_display_number", store=True)
+
+    credit_note_total_value = fields.Float(string="Valor Total Nota de Crédito")
+
+    toc_total_display = fields.Float(
+        string="Total TOConline (Dinâmico)",
+        compute="_compute_toc_total_display",
+        store=False  # Não precisa ser armazenado, pois é apenas para exibição
+    )
+
+
+
+
+    def set_value_credit_note(self, aux):
+        for record in self:
+            record.credit_note_total_value = aux
+        return aux
+
+    def get_value_credit_note(self):
+        return self.credit_note_total_value
+
+    @api.depends('toc_document_no', 'toc_document_no_credit_note', 'move_type')
+    def _compute_toc_display_number(self):
+        for move in self:
+            if move.move_type in ('out_refund', 'in_refund'):
+                move.toc_display_number = move.toc_document_no_credit_note or '/'
+            else:
+                move.toc_display_number = move.toc_document_no or '/'
+
+    @api.depends('amount_total_in_currency_signed', 'credit_note_total_value', 'move_type')
+    def _compute_toc_total_display(self):
+        for move in self:
+            if move.move_type in ('out_refund', 'in_refund'):
+                # Mostra valor negativo nas notas de crédito
+                move.toc_total_display = -abs(move.credit_note_total_value)
+            else:
+                move.toc_total_display = move.amount_total_in_currency_signed
 
     def get_base_url(self):
         return  self.base_url
+
+    def get_toc_status_credit_note(self):
+        return  self.toc_status_credit_note
+
+    def set_toc_status_credit_note(self , teste):
+
+        self.toc_status_credit_note = teste
 
     def get_ID_invoice(self):
         self.ensure_one()
@@ -123,12 +175,12 @@ class AccountMove(models.Model):
             "Authorization": f"Bearer {access_token}"
         }
 
-        tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "/"
+        tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "Desconhecido"
         email = partner.email.strip() if partner.email else ""
         customers = []
 
         # 2. Pesquisa por NIF (apenas se válido e não for "/")
-        if tax_number != "/" and tax_number.isdigit() and len(tax_number) == 9:
+        if tax_number != "Desconhecido" and tax_number.isdigit() and len(tax_number) == 9:
             search_url = f"{self.base_url}/api/customers?filter[tax_registration_number]={tax_number}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
@@ -155,7 +207,7 @@ class AccountMove(models.Model):
             "data": {
                 "type": "customers",
                 "attributes": {
-                    "tax_registration_number": tax_number if tax_number else "/",
+                    "tax_registration_number": tax_number ,
                     "business_name": partner.name,
                     "contact_name": partner.name,
                     "website": partner.website or "",
@@ -242,6 +294,12 @@ class AccountMove(models.Model):
             if record.state != 'posted':
                 raise UserError("Only published invoices can be submitted.")
 
+            if record.move_type in ('out_refund', 'in_refund'):  # Nota de crédito
+                record.toc_status = 'draft'  # Ou defina como 'sent' se necessário
+            elif record.move_type == 'out_invoice':  # Fatura
+                if record.state != 'posted':
+                    raise UserError("Only published invoices can be submitted.")
+                record.toc_status = 'draft'  # Inicia como rascunho antes de enviar.
 
 
             # Obter token de acesso
@@ -308,6 +366,13 @@ class AccountMove(models.Model):
                 tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
                 tax_code = tax_info["code"]
                 tax_percentage_toc = tax_info["percentage"]
+
+                if tax_percentage == 0 and not global_exemption_reason:
+                    if record.l10npt_vat_exempt_reason:
+                        global_exemption_reason = record.l10npt_vat_exempt_reason.id
+                    else:
+                        raise UserError("The VAT rate is 0%, but no exemption reason was given.")
+
                 print("mostra aqui a taxa----",tax_percentage_toc)
 
 
@@ -339,13 +404,13 @@ class AccountMove(models.Model):
                 "document_type": "FT",
                 "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
                 "finalize": 0,
-                "customer_tax_registration_number": partner.vat or "",
+                "customer_tax_registration_number": partner.vat.strip() if partner.vat and partner.vat.strip() else "Desconhecido",
                 "customer_business_name": partner.name,
                 "customer_address_detail": partner.street or "",
                 "customer_postcode": partner.zip or "",
                 "customer_city": partner.city or "",
                 "customer_tax_country_region": tax_region,
-                "customer_country": tax_region,
+                "customer_country": partner.country_id.code or "",
                 "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
                 "payment_mechanism": "MO",
                 "vat_included_prices": record.journal_id.vat_included_prices if hasattr(record.journal_id, 'vat_included_prices') else False,

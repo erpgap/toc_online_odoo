@@ -1,18 +1,22 @@
 <odoo>
-  <!--<record id="view_account_invoice_filter_toconline" model="ir.ui.view">
-    <field name="name">account.invoice.select.toconline</field>
+  <record id="view_invoice_tree_toconline" model="ir.ui.view">
+    <field name="name">account.invoice.list.toconline</field>
     <field name="model">account.move</field>
-    <field name="inherit_id" ref="account.view_invoice_select"/>
+    <field name="inherit_id" ref="account.view_invoice_tree"/>
     <field name="arch" type="xml">
-      &lt;!&ndash; Substituindo apenas o campo 'name' &ndash;&gt;
+      <!-- Substitui o campo 'name' pelo novo campo toc_display_number -->
       <xpath expr="//field[@name='name']" position="replace">
-        <field name="toc_document_no" string="Invoice"
-               filter_domain="[
-                    '|', '|' , '|', '|',
-                    ('toc_document_no', 'ilike', self), ('invoice_origin', 'ilike', self),
-                    ('ref', 'ilike', self), ('payment_reference', 'ilike', self),
-                    ('partner_id', 'child_of', self)]"/>
+        <field name="toc_display_number" decoration-bf="1" decoration-danger="made_sequence_gap and state == 'posted'" widget="char_with_placeholder_field" placeholder="/"/>
       </xpath>
+
+      <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
+        <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund', 'out_receipt')</attribute>
+      </xpath>
+
+
+
+
+
     </field>
-  </record>-->
+  </record>
 </odoo>

@@ -10,7 +10,7 @@
                 </group>
 
                 <group string="Produto">
-                    <field name="item_code"/>
+                    <field name="item_code" widget="many2one" options="{'no_create': True}" context="{'default_sale_ok': True}"/>
                     <field name="description"/>
                     <field name="quantity"/>
                     <field name="unit_price"/>

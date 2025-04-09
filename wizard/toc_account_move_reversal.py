@@ -2,21 +2,27 @@ from odoo import models, fields, api
 from odoo.exceptions import UserError
 import requests
 
-
 class CreditNoteWizard(models.TransientModel):
     _name = 'credit.note.wizard'
     _description = 'Wizard para Envio de Nota de Crédito'
 
     invoice_id = fields.Many2one('account.move', string="Fatura Original", required=True)
     toc_document_no = fields.Char(string="Número do Documento TOConline", readonly=True)
+    toc_document_no_credit_note = fields.Char(string="Número da Nota de Crédito", readonly=True)
 
-    # Dados do produto diretamente no wizard
-    item_code = fields.Char(string="Código do Produto")
+    item_code = fields.Many2one('product.product', string="Produto")
     description = fields.Char(string="Descrição")
     quantity = fields.Float(string="Quantidade", default=1.0)
     unit_price = fields.Float(string="Preço Unitário")
     tax_percentage = fields.Float(string="IVA (%)")
     tax_code = fields.Char(string="Código de IVA")
+
+    total_value = fields.Float(string="Valor Total")
+
+
+    def get_total_value(self):
+        return self.total_value
+
 
     @api.model
     def default_get(self, fields):
@@ -46,15 +52,110 @@ class CreditNoteWizard(models.TransientModel):
 
         return res
 
+    def get_document_lines(self, base_url, access_token, document_no):
+        """
+        Obtém as linhas de um documento de vendas a partir da API TOConline.
+
+        :param base_url: URL base da API TOConline
+        :param access_token: Token de autenticação Bearer
+        :param document_no: Número do documento a ser consultado
+        :return: Lista de linhas do documento ou None em caso de erro
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        url = f"{base_url}/api/v1/commercial_sales_documents?filter[document_no]={document_no}"
+
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()  # Lança um erro para status >= 400
+            data = response.json()
+
+            # Se a resposta for uma lista, pegamos o primeiro item (se existir)
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]  # Pegamos o primeiro dicionário da lista
+
+            # Garantimos que data é um dicionário antes de chamar `.get()`
+            if isinstance(data, dict):
+                return data
+            else:
+                print("Erro: a resposta da API não contém um dicionário válido.")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            print(f"Erro ao conectar à API: {e}")
+            return None
+
+    def get_document_lines_only(self, base_url, access_token, document_no):
+        """
+        Obtém as linhas de um documento de vendas a partir da API TOConline.
+
+        :param base_url: URL base da API TOConline
+        :param access_token: Token de autenticação Bearer
+        :param document_no: Número do documento a ser consultado
+        :return: Lista de linhas do documento ou None em caso de erro
+        """
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        url = f"{base_url}/api/v1/commercial_sales_documents?filter[document_no]={document_no}"
+
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()  # Lança um erro para status >= 400
+            data = response.json()
+
+            # Se a resposta for uma lista, pegamos o primeiro item (se existir)
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]  # Pegamos o primeiro dicionário da lista
+
+            # Garantimos que data é um dicionário antes de chamar `.get()`
+            if isinstance(data, dict):
+                # Retorna a parte das linhas (campo 'lines')
+                return data.get("lines", [])
+            else:
+                print("Erro: a resposta da API não contém um dicionário válido.")
+                return None
+
+        except requests.exceptions.RequestException as e:
+            print(f"Erro ao conectar à API: {e}")
+            return None
+
+    @api.onchange('item_code')
+    def _onchange_item_code(self):
+        if self.item_code:
+            product = self.item_code
+
+            self.description = product.name or ''
+            self.unit_price = product.list_price or 0.0
+            self.tax_percentage = sum(product.taxes_id.mapped('amount')) if product.taxes_id else 0.0
+            self.tax_code = ', '.join(
+                filter(None, product.taxes_id.mapped('description') or product.taxes_id.mapped('name')))
+
 
     def action_confirm(self):
-
-        print("o valor que esta nesta variavel é :  " , self.tax_percentage)
-
         self.ensure_one()
 
+
+        print("nota de credito teste --------", self.invoice_id.get_toc_status_credit_note())
+        print("vamos testar agora o iva da credit note -----------------" , self.tax_percentage)
+
+
+        # Verificar se a fatura original já tem uma nota de crédito enviada
         if not self.invoice_id or not self.invoice_id.toc_document_no:
             raise UserError("A fatura original precisa ter sido enviada para o TOConline.")
+
+        # Verificar se a nota de crédito já foi enviada
+        if self.env['account.move'].get_toc_status_credit_note() == 'sent':
+            raise UserError("A nota de crédito já foi enviada para o TOConline.")
+
+        # Verificar se uma nota de crédito já foi criada antes
+        if not self.invoice_id.toc_status_credit_note:
+            raise UserError("Já foi criada uma nota de crédito para esta fatura")
 
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         if not access_token:
@@ -63,32 +164,31 @@ class CreditNoteWizard(models.TransientModel):
         url_base = self.invoice_id.get_base_url()
         invoice_toc_document_no = self.invoice_id.toc_document_no
 
-        # Dados do cliente (podias também extrair de self.invoice_id.partner_id)
-        document_data = self.invoice_id.get_document_lines(url_base, access_token, invoice_toc_document_no)
+        # Dados do cliente
+        document_data = self.get_document_lines(url_base, access_token, invoice_toc_document_no)
 
         tax_region = self.invoice_id.getStateCompany()
         region_map = {"Madeira": "PT-MA", "Açores": "PT-AC", "Continente": "PT"}
         tax_region = region_map.get(tax_region, "PT")
 
-        print("vamos agora tambem ver qual a taxa registation ",tax_region)
-        # Verificar se a taxa de IVA foi preenchida corretamente
-        iva_percentage = self.tax_percentage if self.tax_percentage else 0.0
-        """if iva_percentage == 0.0:
-            # Tentando obter a taxa de IVA da primeira linha de fatura (caso não tenha sido preenchido)
-            first_line = self.invoice_id.invoice_line_ids.filtered(lambda l: l.product_id)
-            if first_line:
-                # Assumindo que a primeira linha tem pelo menos um imposto
-                iva_percentage = first_line[0].tax_ids[0].amount if first_line[0].tax_ids else 0.0
-            if iva_percentage == 0.0:
-                raise UserError("A taxa de IVA não foi preenchida corretamente.")
-"""
-        # Construir o payload
+        taxes_data = self.invoice_id.get_taxes_from_toconline(access_token)
+        filtered_taxes = [
+            tax for tax in taxes_data
+            if tax["attributes"]["tax_country_region"] == tax_region
+        ]
+
+        tax_percentage = self.tax_percentage
+        tax_info = self.invoice_id.get_tax_info(tax_percentage, tax_region, filtered_taxes)
+        tax_code = tax_info["code"]
+
+        print("aposto que o tax code esta vazio ",self.tax_code)
+        print("aposto que o tax code esta vazio 2122222221 ",tax_code)
         payload = {
             "document_type": "NC",
             "parent_document_reference": invoice_toc_document_no,
             "date": self.invoice_id.invoice_date.strftime("%Y-%m-%d") if self.invoice_id.invoice_date else "",
-            "due_date": self.invoice_id.invoice_date_due.strftime("%Y-%m-%d") if self.invoice_id.invoice_date_due else "",
-
+            "due_date": self.invoice_id.invoice_date_due.strftime(
+                "%Y-%m-%d") if self.invoice_id.invoice_date_due else "",
             "customer_tax_registration_number": document_data.get("customer_tax_registration_number"),
             "customer_business_name": document_data.get("customer_business_name"),
             "customer_address_detail": document_data.get("customer_address_detail"),
@@ -106,35 +206,91 @@ class CreditNoteWizard(models.TransientModel):
             "apply_retention_when_paid": False,
             "notes": f"Nota de crédito referente à fatura: {invoice_toc_document_no}",
             "lines": [{
-                "item_id": None,  # Se necessário, coloque o ID do produto, caso exista
-                "item_code": self.item_code,
-                "description": self.description,
+                "item_id": None,
+                "item_code": self.item_code.default_code if self.item_code else '',
+                "description": self.description or (self.item_code.name if self.item_code else ''),
                 "quantity": self.quantity,
                 "unit_price": self.unit_price,
-                "tax_percentage": iva_percentage,  # Garantir que a taxa de IVA esteja correta
-                #"tax_code": self.tax_code or "INT",
-                # Defina o código de IVA, se não preenchido, use 'INT' (internacional)
+                "tax_code": tax_code,
+                "tax_percentage": tax_percentage or 0.0,
+                "tax_country_region": tax_region,
+
                 "item_type": "Product",
                 "exemption_reason": None,
             }],
         }
 
-        print(payload)
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
         response = requests.post(f"{url_base}/api/v1/commercial_sales_documents", json=payload, headers=headers)
 
+        print(f"Mostra o preço inserido {self.unit_price}")
+        print(f"Mostra o preço quantidade {self.quantity}")
+        print("ivaaaaa ",tax_percentage)
 
+        variavel_auc = self.unit_price*self.quantity
 
+        print("este é o total da credit note ",variavel_auc)
+
+        self.total_value = variavel_auc
+
+        active_id = self.env.context.get('active_id')
+        invoice = self.env['account.move'].browse(active_id)
+        invoice.set_value_credit_note(variavel_auc)
+
+        print("estaaa é uma variavel importante ----------------------------",invoice.get_value_credit_note())
+        print("esta é a minha variavel aux", self.total_value)
+        print("esta é a resposta ao pedido : ----------------------")
+        print(response.json())
+        print("esta é a resposta ao pedido : ----------------------")
+
+        if response.status_code == 200:
+            self.invoice_id.set_toc_status_credit_note('sent')
         if response.status_code != 200:
             raise UserError(f"Erro ao enviar nota de crédito: {response.text}")
 
-        # Atualizar estado na fatura
-        self.invoice_id.write({
-            'toc_status_credit_note': 'sent',
-            'toc_document_no': response.json().get('document_no'),
-            'toc_invoice_url': response.json().get('invoice_url'),
+        response_data = response.json()
+
+        reverse_vals = self.invoice_id._reverse_moves(default_values_list=[{
+            'ref': f"Nota de crédito gerada a partir do TOConline",
+            'date': fields.Date.today(),
+        }], cancel=False)
+
+        credit_note = reverse_vals and reverse_vals[0]
+
+        if credit_note.invoice_line_ids:
+            line = credit_note.invoice_line_ids[0]
+            # Tentar encontrar um imposto com base no valor do wizard
+            tax = self.env['account.tax'].search([
+                ('amount', '=', self.tax_percentage),
+                ('type_tax_use', '=', 'sale'),
+            ], limit=1)
+
+            if not tax:
+                raise UserError(
+                    f"Imposto com {self.tax_percentage}% não encontrado no sistema. Verifique a configuração dos impostos.")
+
+            line.write({
+                'product_id': self.item_code.id,
+                'name': self.description,
+                'quantity': self.quantity ,
+                'price_unit': self.unit_price,
+                'tax_ids': [(6, 0, tax.ids)],
+            })
+
+        if not credit_note:
+            raise UserError("Erro ao criar a nota de crédito no Odoo.")
+
+        print(f"Nota de crédito atualizada com status: {credit_note.toc_status_credit_note}")
+
+        credit_note.write({
+            'toc_document_no_credit_note': response_data.get('document_no'),
+            'toc_invoice_url': response_data.get('invoice_url', ''),
         })
 
+        credit_note._cr.commit()
+
+
+        print(f"Nota de crédito atualizada com status: {credit_note.toc_status_credit_note}")
+        print("nota de credito teste 1 --------", self.env['account.move'].get_toc_status_credit_note())
+
         return {'type': 'ir.actions.act_window_close'}
-
-

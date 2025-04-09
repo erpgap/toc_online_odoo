@@ -28,7 +28,6 @@
 
                      </div>
                   </div>
-                  <!-- Os tokens são atualizados via OAuth, não sendo esperada edição manual -->
                   <div class="row mt16">
                      <div class="col-6">
                         <field name="toc_online_access_token"
