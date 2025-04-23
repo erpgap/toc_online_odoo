@@ -14,6 +14,7 @@
         'wizard/toc_account_move_reversal.xml',
         'views/toc_credit_note.xml',
         'views/toc_invoice_list.xml',
+        'data/ir_cron.xml'
 
 
     ],

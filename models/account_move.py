@@ -1,47 +1,54 @@
-import json
 import requests
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import json
+import logging
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
 
     toc_status = fields.Selection([
-        ('draft', 'Rascunho'),
-        ('sent', 'Enviado'),
-        ('error', 'Erro')
-    ], string="Status TOConline", default='draft')
+        ('draft', 'draft'),
+        ('sent', 'sent'),
+        ('error', 'Error')
+    ], string="TOConline Status", default='draft')
 
     toc_status_credit_note = fields.Selection([
-        ('draft', 'Rascunho'),
-        ('sent', 'Enviado'),
-        ('error', 'Erro')
-    ], string="Status TOConline", default='draft')
+        ('draft', 'draft'),
+        ('sent', 'sent'),
+        ('error', 'Error')
+    ], string="TOConline Status", default='draft')
 
-    toc_invoice_url = fields.Char(string="URL Fatura TOConline")
+    toc_invoice_url = fields.Char(string="TOConline Invoice URL")
     base_url = 'https://api9.toconline.pt'
-    checkbox = fields.Boolean(string="Checkbox marcada", default=True)
-    toc_document_no = fields.Char(string="Número do Documento TOConline")
-    toc_document_no_credit_note = fields.Char(string="Número da nota de crédito TOC")
+    checkbox = fields.Boolean(string="Checkbox marked", default=True)
+    toc_document_no = fields.Char(string="TOConline Document Number")
+    toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
 
-    toc_display_number = fields.Char(string="Nº TOC (Visualização)", compute="_compute_toc_display_number", store=True)
+    toc_display_number = fields.Char(string="TOConline Number. (Visualization)", compute="_compute_toc_display_number", store=True)
 
     credit_note_total_value = fields.Float(string="Valor Total Nota de Crédito")
 
     toc_total_display = fields.Float(
-        string="Total TOConline (Dinâmico)",
+        string="Total TOConline (Dynamic)",
         compute="_compute_toc_total_display",
-        store=False  # Não precisa ser armazenado, pois é apenas para exibição
+        store=False
     )
 
-
-
+    toc_receipt_ids = fields.Text(
+        string="TOConline Sales Receipt IDs",
+        help="List of payment receipt IDs associated with TOConline",
+    )
 
     def set_value_credit_note(self, aux):
         for record in self:
             record.credit_note_total_value = aux
         return aux
+
+    def get_invoice_number(self):
+        for rec in self:
+            _logger = logging.getLogger(__name__)
+            _logger.info("ID: %s | Número: %s | Estado: %s", rec.id, rec.name, rec.state)
 
     def get_value_credit_note(self):
         return self.credit_note_total_value
@@ -58,7 +65,6 @@ class AccountMove(models.Model):
     def _compute_toc_total_display(self):
         for move in self:
             if move.move_type in ('out_refund', 'in_refund'):
-                # Mostra valor negativo nas notas de crédito
                 move.toc_total_display = -abs(move.credit_note_total_value)
             else:
                 move.toc_total_display = move.amount_total_in_currency_signed
@@ -79,19 +85,104 @@ class AccountMove(models.Model):
 
     def getStateCompany(self):
         """
-        Retorna o estado da empresa (obtido do parceiro da empresa).
+        Returns the company state (obtained from the company partner).
         """
         companies = self.env['res.company'].search([])
         portuguese_company = companies.filtered(lambda c: c.country_id.code == 'PT')
         if portuguese_company:
             return portuguese_company.partner_id.state_id.name
         else:
-            print("Nenhuma empresa portuguesa encontrada")
+            print("No Portuguese companies found")
             return False
+
+    def get_document_id_by_number(self, access_token, document_no):
+        """
+       Searches for a document by its number in TOConline and returns the corresponding ID.
+        """
+        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+
+        documents = response.json()
+
+        if isinstance(documents, dict) and 'data' in documents:
+            documents = documents['data']
+
+        for doc in documents:
+            if doc.get("document_no") == document_no:
+                return doc.get("id")
+
+        raise UserError(f"Document with number {document_no} not found in TOConline.")
+
+    def get_user_id_by_number_invoice(self, access_token, document_no):
+        """
+            Searches for a document by its number in TOConline and returns the corresponding ID.
+        """
+        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+
+        documents = response.json()
+
+        if isinstance(documents, dict) and 'data' in documents:
+            documents = documents['data']
+
+        for doc in documents:
+            if doc.get("document_no") == document_no:
+                print("quero ver se este é o id ", doc.get("user_id"))
+                return doc.get("user_id")
+
+        raise UserError(f"Document with number {document_no}not found in TOConline.")
+
+    def get_document_field_by_number(self, access_token, document_no, field):
+        """
+       Searches for a document by its number in TOConline and returns the value of the specified field.
+
+        :param access_token: API access token
+        :param document_no: Document number to search for
+        :param field: Field to extract from the document (e.g. "id", "user_id", "country_id")
+        :return: Field value if found
+        """
+        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+
+        documents = response.json()
+
+        if isinstance(documents, dict) and 'data' in documents:
+            documents = documents['data']
+
+        for doc in documents:
+            if doc.get("document_no") == document_no:
+                return doc.get(field)
+
+        raise UserError(f"Document with number {document_no} not found in TOConline.")
 
     def get_taxes_from_toconline(self, access_token):
         """
-        Busca as taxas de IVA disponíveis no TOConline.
+            Search for available VAT rates on TOConline.
         """
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -106,7 +197,7 @@ class AccountMove(models.Model):
 
     def get_tax_code(self, tax_percentage, tax_region, taxes_data):
         """
-        Mapeia o valor da taxa e a região para o código de imposto correto no TOConline.
+        Maps the tax amount and region to the correct tax code in TOConline.
         """
         for tax in taxes_data:
             attributes = tax["attributes"]
@@ -117,7 +208,7 @@ class AccountMove(models.Model):
 
     def get_tax_info(self, percentage, region, tax_list):
         """
-        Retorna tax_code e tax_percentage vindo do TOConline, baseado no valor local e região.
+        Returns tax_code and tax_percentage from TOConline, based on local value and region.
         """
         for tax in tax_list:
             tax_attr = tax["attributes"]
@@ -126,48 +217,44 @@ class AccountMove(models.Model):
                     "code": tax_attr["tax_code"],
                     "percentage": tax_attr["tax_percentage"]
                 }
-        raise UserError(f"Não foi encontrada uma taxa com {percentage}% para a região {region}.")
+        raise UserError(f"No rate was found with {percentage}% for the region {region}.")
 
 
     def get_conversion_rate_to_euro(self, invoice_currency):
         """
-        Obtém a taxa de conversão para EUR usando a conversão nativa do Odoo.
-        Se a fatura estiver postada, usa o valor calculado (invoice_currency_rate);
-        caso contrário, usa o método _convert da moeda.
+        Gets the conversion rate to EUR using Odoo's native conversion.
+        If the invoice is posted, uses the calculated value (invoice_currency_rate);
+        otherwise, uses the currency's _convert method.
         """
         if invoice_currency == 'EUR':
-            return 1  # Já está em EUR
+            return 1
 
-        # Obtem os objetos de moeda
         currency_obj = self.env['res.currency'].search([('name', '=', invoice_currency)], limit=1)
         euro_currency = self.env['res.currency'].search([('name', '=', 'EUR')], limit=1)
         if not currency_obj or not euro_currency:
-            raise UserError(f"A moeda {invoice_currency} ou EUR não foi encontrada no Odoo.")
+            raise UserError(f"The currency {invoice_currency} or EUR was not found in Odoo.")
 
         if self.state == "posted":
-            # Se estiver postada, utiliza a taxa calculada
             if self.invoice_currency_rate:
                 return self.invoice_currency_rate
             else:
                 raise UserError(
-                    f"Nenhuma taxa de câmbio encontrada para {invoice_currency}. Verifique as configurações."
+                        f"No exchange rates found for {invoice_currency}. Check settings."
                 )
 
-        # Para faturas não postadas, utiliza a taxa do método _convert com o contexto de data
         date = self.invoice_date or fields.Date.today()
         conversion_rate = currency_obj.with_context(date=date)._convert(1, euro_currency, self.env.company, date)
         if conversion_rate <= 0:
-            raise UserError(f"Não foi possível obter a taxa de conversão para {invoice_currency}.")
+            raise UserError(f"Unable to get conversion rate for{invoice_currency}.")
         return conversion_rate
 
     def get_or_create_customer_in_toconline(self, access_token, partner):
         """
-        Verifica se o cliente já existe no TOConline (via toc_online_id, NIF ou e-mail).
-        Se não existir, cria o cliente, garantindo que não haja duplicatas.
+        Checks if the client already exists in TOConline (via toc_online_id, NIF or email).
+        If it does not exist, it creates the client, ensuring that there are no duplicates.
         """
-        # 1. Se já tem ID no TOConline, retorna imediatamente
         if partner.toc_online_id:
-            print(f"✅ Cliente já possui ID no TOConline: {partner.toc_online_id}")
+            print(f"Client already has an ID in TOConline: {partner.toc_online_id}")
             return partner.toc_online_id
 
         headers = {
@@ -179,29 +266,27 @@ class AccountMove(models.Model):
         email = partner.email.strip() if partner.email else ""
         customers = []
 
-        # 2. Pesquisa por NIF (apenas se válido e não for "/")
         if tax_number != "Desconhecido" and tax_number.isdigit() and len(tax_number) == 9:
             search_url = f"{self.base_url}/api/customers?filter[tax_registration_number]={tax_number}"
+            print(search_url)
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    print(f"✅ Cliente encontrado via NIF: {customers[0]['attributes']['business_name']}")
+                    print(f"Customer found via NIF: {customers[0]['attributes']['business_name']}")
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        # 3. Se não tem NIF válido ou não foi encontrado, pesquisa por e-mail (obrigatório)
         if not customers and email:
             search_url = f"{self.base_url}/api/customers?filter[email]={email}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    print(f"✅ Cliente encontrado via e-mail: {customers[0]['attributes']['business_name']}")
+                    print(f"Customer found via email: {customers[0]['attributes']['business_name']}")
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        # 4. Se não encontrou nem por NIF nem por e-mail, cria um novo
         create_url = f"{self.base_url}/api/customers"
         customer_payload = {
             "data": {
@@ -222,28 +307,27 @@ class AccountMove(models.Model):
                 }
             }
         }
-        print("este é o nosso produto ")
-        print(customer_payload)
 
-        print("📤 Criando novo cliente no TOConline...")
         response = requests.post(create_url, json=customer_payload, headers=headers)
+
+
 
         if response.status_code in (200, 201):
             customer_id = response.json()["data"]["id"]
-            print(f"✅ Cliente criado com sucesso (ID: {customer_id})")
+            print(f"Client created successfully(ID: {customer_id})")
             partner.sudo().write({'toc_online_id': customer_id})
             return customer_id
         else:
             error_msg = response.text
             if "already exists" in error_msg.lower():
                 raise UserError(
-                    _("❌ O cliente já existe no TOConline, mas não foi possível vinculá-lo automaticamente."))
+                    _(" The client already exists in TOConline, but it was not possible to link it automatically."))
             else:
-                raise UserError(_("❌ Erro ao criar cliente no TOConline: %s") % error_msg)
+                raise UserError(_("❌ Error creating client in TOConline: %s") % error_msg)
     def get_or_create_product_in_toconline(self, access_token, product):
         """
-        Verifica se o produto já existe no TOConline.
-        Caso contrário, cria-o e retorna o ID do produto.
+        Checks if the product already exists in TOConline.
+        If not, creates it and returns the product ID.
         """
         headers = {
             "Content-Type": "application/json",
@@ -256,7 +340,7 @@ class AccountMove(models.Model):
             if products:
                 print(f"Product found on TOConline: {products[0]['attributes']['item_code']}")
                 return products[0]["id"]
-        # Se não encontrado, cria o produto
+
         print(f"Product not found; creating new product: {product.name}")
         create_url = f"{self.base_url}/api/products"
         product_payload = {
@@ -283,10 +367,9 @@ class AccountMove(models.Model):
 
     def action_send_invoice_to_toconline(self):
         """
-        Envia os dados da fatura para o TOConline.
-        Caso o token esteja expirado, tenta renová-lo antes de enviar.
+        Sends the invoice data to TOConline.
+        If the token has expired, it tries to renew it before sending.
         """
-
 
         for record in self:
             if record.toc_status == 'sent':
@@ -294,15 +377,14 @@ class AccountMove(models.Model):
             if record.state != 'posted':
                 raise UserError("Only published invoices can be submitted.")
 
-            if record.move_type in ('out_refund', 'in_refund'):  # Nota de crédito
-                record.toc_status = 'draft'  # Ou defina como 'sent' se necessário
-            elif record.move_type == 'out_invoice':  # Fatura
+            if record.move_type in ('out_refund', 'in_refund'):
+                record.toc_status = 'draft'
+            elif record.move_type == 'out_invoice':
                 if record.state != 'posted':
                     raise UserError("Only published invoices can be submitted.")
-                record.toc_status = 'draft'  # Inicia como rascunho antes de enviar.
+                record.toc_status = 'draft'
 
 
-            # Obter token de acesso
             url_authorization_code = self.env['toc.api'].get_authorization_url()
             client_id = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
             authorization_code = self.env['toc.api']._extract_authorization_code_from_url(url_authorization_code)
@@ -314,7 +396,6 @@ class AccountMove(models.Model):
 
             for record in self:
                 document_no = record.get_ID_invoice()
-                print(f"este é o numero da minha faturaaaaaaaaaaa {document_no}")
             if "error" in tokens:
                 raise UserError(f"Error getting token code: {tokens['error']}")
             access_token = tokens.get("access_token")
@@ -331,7 +412,6 @@ class AccountMove(models.Model):
                 raise UserError("Customer must have name, address, city, country and postal code filled in.")
             customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
 
-            # Determina o estado da empresa e mapeia para a região fiscal
             state_company = self.getStateCompany()
             region_map = {
                 "Madeira": "PT-MA",
@@ -348,11 +428,8 @@ class AccountMove(models.Model):
                 if tax["attributes"]["tax_country_region"] == tax_region
             ]
 
-            print("estas são as taxas --------------0")
-            print(taxes_data)
-            print("*-------------------*")
-            print(filtered_taxes)
-            print("fim------------------------")
+
+
             global_exemption_reason = None
             lines = []
 
@@ -373,9 +450,11 @@ class AccountMove(models.Model):
                     else:
                         raise UserError("The VAT rate is 0%, but no exemption reason was given.")
 
-                print("mostra aqui a taxa----",tax_percentage_toc)
 
 
+
+                print("a minha taxa de percentagem é esta *********************",tax_percentage_toc)
+                print("a minha taxa de regiao é esta *********************",tax_region)
 
                 lines.append({
                     "item_id": product_id,
@@ -390,20 +469,20 @@ class AccountMove(models.Model):
                     "exemption_reason": None,
                 })
 
+            print("estas são as minhas lines ", lines
+                  )
 
-            print("estas são as lines -----------------")
-            print(lines)
-            print("-----------------------------***---------")
-            currency_obj = self.currency_id  # Moeda da fatura
-            company_currency = self.company_id.currency_id  # Moeda da empresa (normalmente EUR)
+            currency_obj = self.currency_id
+            company_currency = self.company_id.currency_id
             date = self.invoice_date or fields.Date.today()
 
             conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, self.company_id, date)
 
             payload = {
                 "document_type": "FT",
+                #"status": 0,
                 "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
-                "finalize": 0,
+                "finalize":0,
                 "customer_tax_registration_number": partner.vat.strip() if partner.vat and partner.vat.strip() else "Desconhecido",
                 "customer_business_name": partner.name,
                 "customer_address_detail": partner.street or "",
@@ -412,40 +491,40 @@ class AccountMove(models.Model):
                 "customer_tax_country_region": tax_region,
                 "customer_country": partner.country_id.code or "",
                 "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
-                "payment_mechanism": "MO",
+                #"payment_mechanism": "MO",
                 "vat_included_prices": record.journal_id.vat_included_prices if hasattr(record.journal_id, 'vat_included_prices') else False,
                 "operation_country": tax_region,
+                #"sort_status": 0,
                 "currency_iso_code": record.currency_id.name,
                 "currency_conversion_rate": conversion_rate,
-                "retention": 7.5,
-                "retention_type": "IRS",
+                #"retention": 7.5,
+                #"retention_type": "IRS",
                 "apply_retention_when_paid": True,
                 "notes": "Notas ao documento",
                 "tax_exemption_reason_id": global_exemption_reason,
                 "lines": lines,
             }
 
+            print("estes são os dados do envio :::---------------------")
+            print(payload)
+            print("----------***---------------------------------------")
             print(payload)
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}"
             }
             response = requests.post(toc_endpoint, json=payload, headers=headers, timeout=120)
-            print(f"Resposta do envio: {response.status_code}")
 
-            print(f"Resposta do envio: {response.text}")
 
             if response.status_code != 200:
                 raise UserError(
-                    f"Erro ao enviar a fatura para o TOConline. Status Code: {response.status_code}. Corpo da resposta: {response.text}"
+                    f"Error sending invoice to TOConline. Status Code: {response.status_code}. Response body: {response.text}"
                 )
 
-            print(f"teste 1 {self.toc_document_no}")
 
-            data = response.json()  # <- Certifique-se de que esta linha vem antes de usar 'data'
+            data = response.json()
             document_no = data.get('document_no', '')
 
-            print(f"teste 2 {document_no}")
             record.write({
                 'toc_status': 'sent',
                 'toc_invoice_url': data.get('invoice_url', ''),
@@ -453,14 +532,12 @@ class AccountMove(models.Model):
             })
 
             self.env.cr.commit()
-            print(f"teste 11 {self.toc_document_no}")
 
-            variavelteste = self.get_ID_invoice()
-            print(f"teste 111 {variavelteste}")
+
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
         """
-        Busca o ID de um cliente no TOConline por NIF ou email.
+            Search for a customer ID in TOConline by NIF or email.
         """
         headers = {
             "Content-Type": "application/json",

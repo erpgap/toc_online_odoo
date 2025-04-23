@@ -36,7 +36,6 @@ class CreditNoteWizard(models.TransientModel):
                 'toc_document_no': invoice.toc_document_no,
             })
 
-            # Pré-preenchimento com a primeira linha de produto (se houver)
             if invoice.invoice_line_ids:
                 first_line = invoice.invoice_line_ids.filtered(lambda l: l.product_id)[:1]
                 if first_line:
@@ -73,11 +72,9 @@ class CreditNoteWizard(models.TransientModel):
             response.raise_for_status()  # Lança um erro para status >= 400
             data = response.json()
 
-            # Se a resposta for uma lista, pegamos o primeiro item (se existir)
             if isinstance(data, list) and len(data) > 0:
                 data = data[0]  # Pegamos o primeiro dicionário da lista
 
-            # Garantimos que data é um dicionário antes de chamar `.get()`
             if isinstance(data, dict):
                 return data
             else:

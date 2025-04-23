@@ -4,7 +4,6 @@
     <field name="model">account.move</field>
     <field name="inherit_id" ref="account.view_invoice_tree"/>
     <field name="arch" type="xml">
-      <!-- Substitui o campo 'name' pelo novo campo toc_display_number -->
       <xpath expr="//field[@name='name']" position="replace">
         <field name="toc_display_number" decoration-bf="1" decoration-danger="made_sequence_gap and state == 'posted'" widget="char_with_placeholder_field" placeholder="/"/>
       </xpath>

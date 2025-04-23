@@ -11,7 +11,7 @@
           </span>
           <h1>
             <field name="toc_display_number" invisible="not toc_display_number" readonly="1"/>
-            <span invisible="toc_display_number">Rascunho</span>
+            <span invisible="toc_display_number">draft</span>
           </h1>
         </div>
       </xpath>

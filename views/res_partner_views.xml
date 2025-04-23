@@ -6,7 +6,6 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='vat']" position="after">
                 <group>
-                <label for="toc_online_id"  />
                 <field name="toc_online_id" />
                 </group>
             </xpath>

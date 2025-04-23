@@ -24,10 +24,8 @@ class ResConfigSettings(models.TransientModel):
         config_parameter='toc_online.authorization_code'
     )
 
+
     def get_values(self):
-        """
-        Obtém os valores armazenados nos parâmetros do sistema e os preenche na interface.
-        """
         res = super(ResConfigSettings, self).get_values()
         params = self.env['ir.config_parameter'].sudo()
 
@@ -37,6 +35,7 @@ class ResConfigSettings(models.TransientModel):
             'toc_online_access_token': params.get_param('toc_online.access_token', default=''),
             'toc_online_refresh_token': params.get_param('toc_online.refresh_token', default=''),
             'toc_online_authorization_code': params.get_param('toc_online.authorization_code', default=''),
+
         })
         return res
 
