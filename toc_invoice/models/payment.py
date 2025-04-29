@@ -2,11 +2,11 @@ from odoo import models, fields, api
 import requests
 import json
 from odoo.exceptions import UserError
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 class AccountPayment(models.Model):
     _inherit = 'account.payment'
 
-    base_url = 'https://api9.toconline.pt'
 
     @api.model
     def sync_payments_from_toc(self):
@@ -22,7 +22,7 @@ class AccountPayment(models.Model):
             "Content-Type": "application/json",
         }
 
-        endpoint = f"{self.base_url}/api/v1/commercial_sales_documents"
+        endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
         response = requests.get(endpoint, headers=headers)
         if response.status_code != 200:
             print(f"Error in TOC request: {response.status_code} - {response.text}")
@@ -200,7 +200,7 @@ class AccountPayment(models.Model):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
         }
-        endpoint = f"{self.base_url}/api/v1/commercial_sales_receipts/{receipt_id}"
+        endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts/{receipt_id}"
 
         response = requests.get(endpoint, headers=headers)
 

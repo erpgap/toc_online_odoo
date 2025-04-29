@@ -3,6 +3,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import json
 import logging
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -20,7 +21,6 @@ class AccountMove(models.Model):
     ], string="TOConline Status", default='draft')
 
     toc_invoice_url = fields.Char(string="TOConline Invoice URL")
-    base_url = 'https://api9.toconline.pt'
     checkbox = fields.Boolean(string="Checkbox marked", default=True)
     toc_document_no = fields.Char(string="TOConline Document Number")
     toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
@@ -70,7 +70,7 @@ class AccountMove(models.Model):
                 move.toc_total_display = move.amount_total_in_currency_signed
 
     def get_base_url(self):
-        return  self.base_url
+        return  TOC_BASE_URL
 
     def get_toc_status_credit_note(self):
         return  self.toc_status_credit_note
@@ -99,7 +99,8 @@ class AccountMove(models.Model):
         """
        Searches for a document by its number in TOConline and returns the corresponding ID.
         """
-        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+
+        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
@@ -125,7 +126,8 @@ class AccountMove(models.Model):
         """
             Searches for a document by its number in TOConline and returns the corresponding ID.
         """
-        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+
+        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
@@ -157,7 +159,8 @@ class AccountMove(models.Model):
         :param field: Field to extract from the document (e.g. "id", "user_id", "country_id")
         :return: Field value if found
         """
-        url = f"{self.base_url}/api/v1/commercial_sales_documents/"
+
+        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/"
 
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -188,7 +191,8 @@ class AccountMove(models.Model):
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        url = f"{self.base_url}/api/taxes"
+
+        url = f"{TOC_BASE_URL}/api/taxes"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             return response.json().get('data', [])
@@ -253,6 +257,7 @@ class AccountMove(models.Model):
         Checks if the client already exists in TOConline (via toc_online_id, NIF or email).
         If it does not exist, it creates the client, ensuring that there are no duplicates.
         """
+
         if partner.toc_online_id:
             print(f"Client already has an ID in TOConline: {partner.toc_online_id}")
             return partner.toc_online_id
@@ -267,7 +272,7 @@ class AccountMove(models.Model):
         customers = []
 
         if tax_number != "Desconhecido" and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{self.base_url}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
             print(search_url)
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
@@ -278,7 +283,7 @@ class AccountMove(models.Model):
                     return customers[0]["id"]
 
         if not customers and email:
-            search_url = f"{self.base_url}/api/customers?filter[email]={email}"
+            search_url = f"{TOC_BASE_URL}/api/customers?filter[email]={email}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])
@@ -287,7 +292,7 @@ class AccountMove(models.Model):
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        create_url = f"{self.base_url}/api/customers"
+        create_url = f"{TOC_BASE_URL}/api/customers"
         customer_payload = {
             "data": {
                 "type": "customers",
@@ -329,11 +334,12 @@ class AccountMove(models.Model):
         Checks if the product already exists in TOConline.
         If not, creates it and returns the product ID.
         """
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}"
         }
-        search_url = f"{self.base_url}/api/products?filter[item_code]={product.default_code}"
+        search_url = f"{TOC_BASE_URL}/api/products?filter[item_code]={product.default_code}"
         response = requests.get(search_url, headers=headers)
         if response.status_code == 200:
             products = response.json().get('data', [])
@@ -342,7 +348,7 @@ class AccountMove(models.Model):
                 return products[0]["id"]
 
         print(f"Product not found; creating new product: {product.name}")
-        create_url = f"{self.base_url}/api/products"
+        create_url = f"{TOC_BASE_URL}/api/products"
         product_payload = {
             "data": {
                 "type": "products",
@@ -370,6 +376,7 @@ class AccountMove(models.Model):
         Sends the invoice data to TOConline.
         If the token has expired, it tries to renew it before sending.
         """
+
 
         for record in self:
             if record.toc_status == 'sent':
@@ -406,7 +413,7 @@ class AccountMove(models.Model):
             if not access_token:
                 raise UserError("Could not get access token.")
 
-            toc_endpoint = f"{self.base_url}/api/v1/commercial_sales_documents"
+            toc_endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
             partner = record.partner_id
             if not all([partner.name, partner.street, partner.city, partner.country_id, partner.zip]):
                 raise UserError("Customer must have name, address, city, country and postal code filled in.")
@@ -420,7 +427,6 @@ class AccountMove(models.Model):
             }
             tax_region = region_map.get(state_company, "PT")
 
-            print("está a a nossa taxa ---",tax_region)
 
             taxes_data = self.get_taxes_from_toconline(access_token)
             filtered_taxes = [
@@ -535,18 +541,19 @@ class AccountMove(models.Model):
         """
             Search for a customer ID in TOConline by NIF or email.
         """
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}"
         }
         customers = []
         if tax_number and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{self.base_url}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])
         if not customers and email:
-            search_url = f"{self.base_url}/api/customers?filter[email]={email}"
+            search_url = f"{TOC_BASE_URL}/api/customers?filter[email]={email}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])

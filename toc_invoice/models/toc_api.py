@@ -3,13 +3,13 @@ from odoo import models, fields
 import base64
 from urllib.parse import urlparse, parse_qs, urlencode
 
+from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
+
+
 class TocAPI(models.AbstractModel):
     _name = 'toc.api'
     _description = 'TOConline API'
 
-    redirect_uri = "https://5d54-2001-818-de5d-da00-ab74-3e1f-b1bc-38f2.ngrok-free.app/oauth/callback"
-    auth_url = "https://app9.toconline.pt/oauth"
-    token_url = "https://app9.toconline.pt/oauth/token"
 
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")

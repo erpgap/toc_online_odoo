@@ -2,11 +2,11 @@ import requests
 import json
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
-    base_url = 'https://api9.toconline.pt'
 
     def get_total_paid_from_toc_by_receivable_id(self, toc_receipt_id):
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
@@ -18,7 +18,7 @@ class AccountPaymentRegister(models.TransientModel):
             "Content-Type": "application/json",
         }
 
-        endpoint = f"{self.base_url}/api/v1/commercial_sales_receipts"
+        endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts"
         response = requests.get(endpoint, headers=headers, timeout=60)
 
         if response.status_code != 200:
@@ -112,7 +112,7 @@ class AccountPaymentRegister(models.TransientModel):
                 "Content-Type": "application/json",
             }
 
-            endpoint = f"{self.base_url}/api/v1/commercial_sales_receipts"
+            endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts"
             response = requests.post(endpoint, json=payload, headers=headers, timeout=120)
 
             if response.status_code != 200:
