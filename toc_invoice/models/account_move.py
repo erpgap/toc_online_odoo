@@ -480,7 +480,7 @@ class AccountMove(models.Model):
 
             payload = {
                 "document_type": "FT",
-                #"status": 0,
+                "status": 0,
                 "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
                 "finalize":0,
                 "customer_tax_registration_number": partner.vat.strip() if partner.vat and partner.vat.strip() else "Desconhecido",
