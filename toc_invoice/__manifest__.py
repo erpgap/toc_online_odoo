@@ -1,8 +1,8 @@
 {
-    'name': 'TOC',
+    'name': 'Portugal TOCOnline Integration',
     'version': '1.0.0',
-    'description': 'comunicação API ',
-    'summary': 'omunicação API',
+    'description': 'Portuguese certified invoices using TOCOnline',
+    'summary': 'Portuguese certified invoices using TOCOnline',
     'category': 'Accounting/Accounting',
     'depends': ['base', 'web', 'contacts', 'product', 'account' , 'l10n_pt_vat' ],
     'data': [

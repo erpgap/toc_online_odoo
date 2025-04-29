@@ -6,18 +6,18 @@ class CreditNoteWizard(models.TransientModel):
     _name = 'credit.note.wizard'
     _description = 'Wizard para Envio de Nota de Crédito'
 
-    invoice_id = fields.Many2one('account.move', string="Fatura Original", required=True)
-    toc_document_no = fields.Char(string="Número do Documento TOConline", readonly=True)
-    toc_document_no_credit_note = fields.Char(string="Número da Nota de Crédito", readonly=True)
+    invoice_id = fields.Many2one('account.move', string="Original Invoice", required=True)
+    toc_document_no = fields.Char(string="TOConline Document Number", readonly=True)
+    toc_document_no_credit_note = fields.Char(string="Credit Note Number", readonly=True)
 
-    item_code = fields.Many2one('product.product', string="Produto")
-    description = fields.Char(string="Descrição")
-    quantity = fields.Float(string="Quantidade", default=1.0)
-    unit_price = fields.Float(string="Preço Unitário")
+    item_code = fields.Many2one('product.product', string="Product")
+    description = fields.Char(string="Description")
+    quantity = fields.Float(string="Amount", default=1.0)
+    unit_price = fields.Float(string="Unit Price")
     tax_percentage = fields.Float(string="IVA (%)")
-    tax_code = fields.Char(string="Código de IVA")
+    tax_code = fields.Char(string="VAT code")
 
-    total_value = fields.Float(string="Valor Total")
+    total_value = fields.Float(string="Total Value")
 
 
     def get_total_value(self):
@@ -53,12 +53,12 @@ class CreditNoteWizard(models.TransientModel):
 
     def get_document_lines(self, base_url, access_token, document_no):
         """
-        Obtém as linhas de um documento de vendas a partir da API TOConline.
+        Gets the lines of a sales document from the TOConline API.
 
-        :param base_url: URL base da API TOConline
-        :param access_token: Token de autenticação Bearer
-        :param document_no: Número do documento a ser consultado
-        :return: Lista de linhas do documento ou None em caso de erro
+        :param base_url: TOConline API base URL
+        :param access_token: Bearer authentication token
+        :param document_no: Document number to be queried
+        :return: List of document lines or None in case of error
         """
         headers = {
             "Content-Type": "application/json",
@@ -69,30 +69,30 @@ class CreditNoteWizard(models.TransientModel):
 
         try:
             response = requests.get(url, headers=headers)
-            response.raise_for_status()  # Lança um erro para status >= 400
+            response.raise_for_status()
             data = response.json()
 
             if isinstance(data, list) and len(data) > 0:
-                data = data[0]  # Pegamos o primeiro dicionário da lista
+                data = data[0]
 
             if isinstance(data, dict):
                 return data
             else:
-                print("Erro: a resposta da API não contém um dicionário válido.")
+                print("Error: API response does not contain a valid dictionary.")
                 return None
 
         except requests.exceptions.RequestException as e:
-            print(f"Erro ao conectar à API: {e}")
+            print(f"Error connecting to API: {e}")
             return None
 
     def get_document_lines_only(self, base_url, access_token, document_no):
         """
-        Obtém as linhas de um documento de vendas a partir da API TOConline.
+        Gets the lines of a sales document from the TOConline API.
 
-        :param base_url: URL base da API TOConline
-        :param access_token: Token de autenticação Bearer
-        :param document_no: Número do documento a ser consultado
-        :return: Lista de linhas do documento ou None em caso de erro
+        :param base_url: TOConline API base URL
+        :param access_token: Bearer authentication token
+        :param document_no: Document number to be queried
+        :return: List of document lines or None in case of error
         """
         headers = {
             "Content-Type": "application/json",
@@ -103,23 +103,20 @@ class CreditNoteWizard(models.TransientModel):
 
         try:
             response = requests.get(url, headers=headers)
-            response.raise_for_status()  # Lança um erro para status >= 400
+            response.raise_for_status()
             data = response.json()
 
-            # Se a resposta for uma lista, pegamos o primeiro item (se existir)
             if isinstance(data, list) and len(data) > 0:
-                data = data[0]  # Pegamos o primeiro dicionário da lista
+                data = data[0]
 
-            # Garantimos que data é um dicionário antes de chamar `.get()`
             if isinstance(data, dict):
-                # Retorna a parte das linhas (campo 'lines')
                 return data.get("lines", [])
             else:
-                print("Erro: a resposta da API não contém um dicionário válido.")
+                print("Error: API response does not contain a valid dictionary.")
                 return None
 
         except requests.exceptions.RequestException as e:
-            print(f"Erro ao conectar à API: {e}")
+            print(f"Error connecting to API: {e}")
             return None
 
     @api.onchange('item_code')
@@ -137,26 +134,18 @@ class CreditNoteWizard(models.TransientModel):
     def action_confirm(self):
         self.ensure_one()
 
-
-        print("nota de credito teste --------", self.invoice_id.get_toc_status_credit_note())
-        print("vamos testar agora o iva da credit note -----------------" , self.tax_percentage)
-
-
-        # Verificar se a fatura original já tem uma nota de crédito enviada
         if not self.invoice_id or not self.invoice_id.toc_document_no:
-            raise UserError("A fatura original precisa ter sido enviada para o TOConline.")
+            raise UserError("The original invoice must have been sent to TOConline.")
 
-        # Verificar se a nota de crédito já foi enviada
         if self.env['account.move'].get_toc_status_credit_note() == 'sent':
-            raise UserError("A nota de crédito já foi enviada para o TOConline.")
+            raise UserError("The credit note has already been sent to TOConline.")
 
-        # Verificar se uma nota de crédito já foi criada antes
         if not self.invoice_id.toc_status_credit_note:
-            raise UserError("Já foi criada uma nota de crédito para esta fatura")
+            raise UserError("A credit note has already been created for this invoice.")
 
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         if not access_token:
-            raise UserError("Access token do TOConline não encontrado.")
+            raise UserError("TOConline access token not found.")
 
         url_base = self.invoice_id.get_base_url()
         invoice_toc_document_no = self.invoice_id.toc_document_no
@@ -178,8 +167,6 @@ class CreditNoteWizard(models.TransientModel):
         tax_info = self.invoice_id.get_tax_info(tax_percentage, tax_region, filtered_taxes)
         tax_code = tax_info["code"]
 
-        print("aposto que o tax code esta vazio ",self.tax_code)
-        print("aposto que o tax code esta vazio 2122222221 ",tax_code)
         payload = {
             "document_type": "NC",
             "parent_document_reference": invoice_toc_document_no,
@@ -201,7 +188,7 @@ class CreditNoteWizard(models.TransientModel):
             "retention": 0,
             "retention_type": "IRS",
             "apply_retention_when_paid": False,
-            "notes": f"Nota de crédito referente à fatura: {invoice_toc_document_no}",
+            "notes": f"Credit note relating to the invoice: {invoice_toc_document_no}",
             "lines": [{
                 "item_id": None,
                 "item_code": self.item_code.default_code if self.item_code else '',
@@ -220,13 +207,8 @@ class CreditNoteWizard(models.TransientModel):
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
         response = requests.post(f"{url_base}/api/v1/commercial_sales_documents", json=payload, headers=headers)
 
-        print(f"Mostra o preço inserido {self.unit_price}")
-        print(f"Mostra o preço quantidade {self.quantity}")
-        print("ivaaaaa ",tax_percentage)
-
         variavel_auc = self.unit_price*self.quantity
 
-        print("este é o total da credit note ",variavel_auc)
 
         self.total_value = variavel_auc
 
@@ -234,21 +216,17 @@ class CreditNoteWizard(models.TransientModel):
         invoice = self.env['account.move'].browse(active_id)
         invoice.set_value_credit_note(variavel_auc)
 
-        print("estaaa é uma variavel importante ----------------------------",invoice.get_value_credit_note())
-        print("esta é a minha variavel aux", self.total_value)
-        print("esta é a resposta ao pedido : ----------------------")
-        print(response.json())
-        print("esta é a resposta ao pedido : ----------------------")
+
 
         if response.status_code == 200:
             self.invoice_id.set_toc_status_credit_note('sent')
         if response.status_code != 200:
-            raise UserError(f"Erro ao enviar nota de crédito: {response.text}")
+            raise UserError(f"Error sending credit note: {response.text}")
 
         response_data = response.json()
 
         reverse_vals = self.invoice_id._reverse_moves(default_values_list=[{
-            'ref': f"Nota de crédito gerada a partir do TOConline",
+            'ref': f"Credit note generated from TOConline",
             'date': fields.Date.today(),
         }], cancel=False)
 
@@ -256,7 +234,6 @@ class CreditNoteWizard(models.TransientModel):
 
         if credit_note.invoice_line_ids:
             line = credit_note.invoice_line_ids[0]
-            # Tentar encontrar um imposto com base no valor do wizard
             tax = self.env['account.tax'].search([
                 ('amount', '=', self.tax_percentage),
                 ('type_tax_use', '=', 'sale'),
@@ -264,7 +241,7 @@ class CreditNoteWizard(models.TransientModel):
 
             if not tax:
                 raise UserError(
-                    f"Imposto com {self.tax_percentage}% não encontrado no sistema. Verifique a configuração dos impostos.")
+                    f"Tax with {self.tax_percentage}% not found in the system. Check tax configuration.")
 
             line.write({
                 'product_id': self.item_code.id,
@@ -275,9 +252,8 @@ class CreditNoteWizard(models.TransientModel):
             })
 
         if not credit_note:
-            raise UserError("Erro ao criar a nota de crédito no Odoo.")
+            raise UserError("Error creating credit note in Odoo.")
 
-        print(f"Nota de crédito atualizada com status: {credit_note.toc_status_credit_note}")
 
         credit_note.write({
             'toc_document_no_credit_note': response_data.get('document_no'),
@@ -287,7 +263,5 @@ class CreditNoteWizard(models.TransientModel):
         credit_note._cr.commit()
 
 
-        print(f"Nota de crédito atualizada com status: {credit_note.toc_status_credit_note}")
-        print("nota de credito teste 1 --------", self.env['account.move'].get_toc_status_credit_note())
 
         return {'type': 'ir.actions.act_window_close'}

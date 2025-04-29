@@ -40,9 +40,7 @@ class ResConfigSettings(models.TransientModel):
         return res
 
     def set_values(self):
-        """
-        Salva os valores inseridos pelo usuário nos parâmetros do sistema.
-        """
+
         super(ResConfigSettings, self).set_values()
         params = self.env['ir.config_parameter'].sudo()
 

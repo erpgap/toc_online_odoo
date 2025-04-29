@@ -8,9 +8,9 @@ class TOConlineOAuth(http.Controller):
         authorization_code = kwargs.get('code')
 
         if not authorization_code:
-            return "Erro: Código de autorização não recebido."
+            return "Error: Authorization code not received."
 
         # Armazena o código nos parâmetros do sistema
         request.env['ir.config_parameter'].sudo().set_param('toc_online.authorization_code', authorization_code)
 
-        return "Autorização concluída. Agora pode enviar faturas para TOConline."
+        return "Authorization completed. You can now send invoices to TOConline."

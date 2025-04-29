@@ -453,8 +453,7 @@ class AccountMove(models.Model):
 
 
 
-                print("a minha taxa de percentagem é esta *********************",tax_percentage_toc)
-                print("a minha taxa de regiao é esta *********************",tax_region)
+
 
                 lines.append({
                     "item_id": product_id,
@@ -505,10 +504,7 @@ class AccountMove(models.Model):
                 "lines": lines,
             }
 
-            print("estes são os dados do envio :::---------------------")
-            print(payload)
-            print("----------***---------------------------------------")
-            print(payload)
+
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}"

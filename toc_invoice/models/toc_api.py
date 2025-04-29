@@ -16,7 +16,7 @@ class TocAPI(models.AbstractModel):
 
     def get_authorization_url(self):
         """
-        Obtém a URL de redirecionamento da API TOConline.
+            Gets the redirect URL from the TOConline API.
         """
         self.client_id = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
         self.client_secret = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
@@ -24,7 +24,6 @@ class TocAPI(models.AbstractModel):
         client_id1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
 
         url_aux = f"{self.auth_url}/auth?"
-        # Criar a URL de autenticação com parâmetros
         params = {
             "client_id": client_id1,
             "redirect_uri": self.redirect_uri,
@@ -37,32 +36,21 @@ class TocAPI(models.AbstractModel):
         }
 
 
-        print(f"Fazendo requisição para: {url_aux}")
-
-        print(f"este é o meu client_id {client_id1}")
-        print(f"Parâmetros: {params}")
-        print(f"Headers: {headers}")
-
         response = requests.get(url_aux, params=params, headers=headers, allow_redirects=False)
 
-        print(f"Resposta da API: {response.status_code}")
-        print(f"Cabeçalhos da resposta: {response.headers}")
-        print(f"Corpo da resposta: {response.text}")
 
-        # Verifica se há um redirecionamento (status code 302)
         if response.status_code == 302:
-            # Extrai a URL de redirecionamento do cabeçalho 'Location'
             redirect_url = response.headers.get('Location')
             if redirect_url:
-                return redirect_url  # Retorna a URL de redirecionamento
+                return redirect_url
             else:
-                return {"error": "Cabeçalho 'Location' não encontrado na resposta."}
+                return {"error": "'Location' header not found in response."}
         else:
-            return {"error": f"Erro ao obter autorização: {response.status_code}"}
+            return {"error": f"Error obtaining authorization: {response.status_code}"}
 
     def _extract_authorization_code_from_url(self, url):
         """
-        Extrai o código de autorização da URL de callback.
+        Extracts the authorization code from the callback URL.
         """
         parsed_url = urlparse(url)
         query_params = parse_qs(parsed_url.query)
@@ -70,7 +58,7 @@ class TocAPI(models.AbstractModel):
 
     def _get_tokens(self, authorization_code):
         """
-        Função interna que troca o authorization_code pelo access_token e refresh_token.
+        Internal function that exchanges authorization_code for access_token and refresh_token.
         """
         self.client_id = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
         self.client_secret = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
@@ -79,34 +67,22 @@ class TocAPI(models.AbstractModel):
         client_secret1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
 
 
-        # Verifique as credenciais
-        print(f"Client ID: {self.client_id}")
-        print(f"este é o meu client_id teste {client_id1}")
-        print(f"este é o meu secret  teste {client_secret1}")
-        print(f"Client Secret: {self.client_secret}")
-
-        # Codificação Base64 das credenciais
         client_credentials = f"{client_id1}:{client_secret1}"
         base64_credentials = base64.b64encode(client_credentials.encode("utf-8")).decode("utf-8")
         print(f"Base64 Credentials: {base64_credentials}")
 
-        # Payload da requisição
         payload = {
             "grant_type": "authorization_code",
             "code": authorization_code,
             "redirect_uri": self.redirect_uri
         }
-        print(f"Payload: {payload}")
 
-        # Headers da requisição
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Authorization": f"Basic {base64_credentials}"
         }
-        print(f"Headers: {headers}")
 
         try:
-            # Faz a requisição para obter os tokens
             response = requests.post(self.token_url, data=payload, headers=headers)
             print(f"Response Status Code: {response.status_code}")
             print(f"Response Body: {response.text}")
@@ -116,11 +92,11 @@ class TocAPI(models.AbstractModel):
             else:
                 return {"error": response.json()}
         except Exception as e:
-            return {"error": f"Erro na requisição: {str(e)}"}
+            return {"error": f"Request error: {str(e)}"}
 
     def get_access_token(self, authorization_code):
         """
-        Obtém o access_token.
+            get the access_token.
         """
         tokens = self._get_tokens(authorization_code)
         if "access_token" in tokens:
@@ -130,7 +106,7 @@ class TocAPI(models.AbstractModel):
 
     def get_refresh_token(self, authorization_code):
         """
-        Obtém o refresh_token.
+         get the refresh_token.
         """
         tokens = self._get_tokens(authorization_code)
         if "refresh_token" in tokens:

@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
             <xpath expr="//form/header" position="before">
                 <button name="%(action_view_credit_note_popup)d"
-                    string="Enviar Nota de Crédito"
+                    string="Send Credit Note"
                     type="action"
                     class="oe_highlight"
                     invisible="state != 'posted' or toc_status != 'sent' or toc_status_credit_note == 'sent'"/>

@@ -20,7 +20,7 @@
         <button id="btn_send_invoice"
                 name="action_send_invoice_to_toconline"
                 type="object"
-                string="Enviar Fatura TOConline"
+                string="Send Invoice TOConline"
                 class="btn-primary"
                 invisible="state != 'posted' or toc_status == 'sent' or checkbox != True"/>
       </xpath>

@@ -9,7 +9,7 @@
                     <field name="toc_document_no" readonly="1"/>
                 </group>
 
-                <group string="Produto">
+                <group string="Product">
                     <field name="item_code" widget="many2one" options="{'no_create': True}" context="{'default_sale_ok': True}"/>
                     <field name="description"/>
                     <field name="quantity"/>
@@ -19,15 +19,15 @@
                 </group>
 
                 <footer>
-                    <button string="Confirmar" name="action_confirm" type="object" class="btn-primary"/>
-                    <button string="Cancelar" special="cancel" class="btn-secondary"/>
+                    <button string="confirm" name="action_confirm" type="object" class="btn-primary"/>
+                    <button string="cancel" special="cancel" class="btn-secondary"/>
                 </footer>
             </form>
         </field>
     </record>
 
     <record id="action_view_credit_note_popup" model="ir.actions.act_window">
-        <field name="name">Enviar Nota de Crédito</field>
+        <field name="name">Send credit note</field>
         <field name="res_model">credit.note.wizard</field>
         <field name="view_mode">form</field>
         <field name="view_id" ref="view_credit_note_popup"/>

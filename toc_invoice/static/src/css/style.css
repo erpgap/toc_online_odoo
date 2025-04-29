@@ -4,18 +4,16 @@
     appearance: none; 
     background-color: white; 
     border: 2px solid green;
-    border-radius: 3px; /* Mantém o estilo arredondado */
+    border-radius: 3px;
     position: relative;
     cursor: pointer;
 }
 
-/* Quando a checkbox está marcada */
 .my-green-checkbox input[type="checkbox"]:checked {
     background-color: green;
     border-color: green;
 }
 
-/* O símbolo de check (✓) branco */
 .my-green-checkbox input[type="checkbox"]::after {
     content: "✓";
     color: white;
@@ -28,7 +26,6 @@
     display: none;
 }
 
-/* Mostrar o check quando estiver marcado */
 .my-green-checkbox input[type="checkbox"]:checked::after {
     display: block;
 }

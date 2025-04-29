@@ -11,7 +11,7 @@ class AccountPaymentRegister(models.TransientModel):
     def get_total_paid_from_toc_by_receivable_id(self, toc_receipt_id):
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         if not access_token:
-            raise UserError("Token TOConline não definido.")
+            raise UserError("TOConline token not defined.")
 
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -22,7 +22,7 @@ class AccountPaymentRegister(models.TransientModel):
         response = requests.get(endpoint, headers=headers, timeout=60)
 
         if response.status_code != 200:
-            raise UserError(f"Erro ao obter recibo TOC {toc_receipt_id}: {response.text}")
+            raise UserError(f"Error getting TOC receipt{toc_receipt_id}: {response.text}")
 
         result = response.json()
         receipts = result if isinstance(result, list) else [result]
@@ -34,7 +34,7 @@ class AccountPaymentRegister(models.TransientModel):
                 received_value = line.get("received_value", 0.0)
 
                 if receivable_id == toc_receipt_id:
-                    print(f"Receivable ID: {receivable_id} | Valor recebido: {received_value}")
+                    print(f"Receivable ID: {receivable_id} | Amount received: {received_value}")
                     total_paid += received_value
 
         return total_paid
@@ -44,17 +44,16 @@ class AccountPaymentRegister(models.TransientModel):
         res = super().action_create_payments()
 
         for wizard in self:
-            print("Só para avisar que passei por aqui : ---------------------------------------------------------------")
 
             access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
             if not access_token:
-                raise UserError("Token de acesso TOConline não encontrado.")
+                raise UserError("TOConline access token not found")
 
             if not wizard.partner_id:
-                raise UserError("O pagamento deve ter um parceiro associado.")
+                raise UserError("Payment must have an associated partner")
 
             if not wizard.amount:
-                raise UserError("O valor do pagamento não pode ser 0.")
+                raise UserError("Payment amount cannot be 0")
 
             partner = wizard.partner_id
             company = wizard.company_id
@@ -117,7 +116,7 @@ class AccountPaymentRegister(models.TransientModel):
             response = requests.post(endpoint, json=payload, headers=headers, timeout=120)
 
             if response.status_code != 200:
-                raise UserError(f"Erro ao enviar pagamento: {response.text}")
+                raise UserError(f"Error sending payment: {response.text}")
 
             toc_receipt_data = response.json()
             receipt_id = toc_receipt_data.get("id")
@@ -130,23 +129,5 @@ class AccountPaymentRegister(models.TransientModel):
 
             self.env.cr.commit()
 
-
-            print("este é o id do recebido do tocOnline  +++++++++++++++++++++++++++++++++++ " , receipt_id)
-            print("aqui vamos fazer a comparação engtre o valor do toc e o valor a pagar no odoo")
-            total = self.get_total_paid_from_toc_by_receivable_id(doc_id)
-            print("este é o total do toc : ", total)
-            print("este 'total do odoo introduzido :", wizard.amount)
-            print("este 'total do misterio :", wizard.source_amount)
-            print("este 'total do misterio 2222:", wizard.source_amount_currency)
-            print("total da fatura : ", ammount)
-
-            print("---------terminar---------------")
-            print("-------o total de pagamentos é este ----------------------")
-            print(total)
-            print("-----------------------------------------------------------")
-
-            aux = ammount - total
-            print("falta pagar isto de acordo com o toc ", aux)
-            print("Falta pagar isto de acordor com o odoo :", wizard.source_amount_currency)
 
         return res
