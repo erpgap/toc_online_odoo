@@ -10,11 +10,11 @@ class AccountPayment(models.Model):
 
     @api.model
     def sync_payments_from_toc(self):
-        print("➡️ Início da sincronização TOC --> Odoo")
+        print(" Início da sincronização TOC --> Odoo")
 
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         if not access_token:
-            print("❌ Token TOConline não definido.")
+            print("Token TOConline não definido.")
             return
 
         headers = {
@@ -41,7 +41,7 @@ class AccountPayment(models.Model):
             for rid in receipt_ids:
                 str_rid = str(rid)
                 if str_rid in processed_receipts:
-                    print(f"ℹ️ Recibo {rid} já foi processado, ignorando.")
+                    print(f" Recibo {rid} já foi processado, ignorando.")
                     continue
 
                 # Verifica se o recibo já está em alguma fatura
@@ -56,7 +56,7 @@ class AccountPayment(models.Model):
                         if isinstance(ids_list, list):
                             if str_rid in [str(x) for x in ids_list]:
                                 already_registered = True
-                                print(f"ℹ️ Recibo {rid} já registado na fatura {inv.name}")
+                                print(f" Recibo {rid} já registado na fatura {inv.name}")
                                 break
 
 
@@ -72,7 +72,7 @@ class AccountPayment(models.Model):
                     'document_no': document_no,
                 }
 
-                print(f"📄 Fatura TOC: {document_no} | ID: {invoice_id} | ❌ Recibo em falta: {rid}")
+                print(f"Fatura TOC: {document_no} | ID: {invoice_id} |  Recibo em falta: {rid}")
                 created = self.create_payment_for_missing_receipt(missing)
 
                 if created:
@@ -116,15 +116,15 @@ class AccountPayment(models.Model):
             toc_receipt_ids = []
 
         if receipt_id_str in [str(x) for x in toc_receipt_ids]:
-            print(f"ℹ️ Recibo {receipt_id_str} já registado na fatura {invoice.name}")
+            print(f"Recibo {receipt_id_str} já registado na fatura {invoice.name}")
             return False
 
         if invoice.state != 'posted':
-            print(f"ℹ️ Fatura '{invoice.name}' não estava validada. Publicando...")
+            print(f" Fatura '{invoice.name}' não estava validada. Publicando...")
             invoice.action_post()
 
         receipt_data = self.get_receipt_data(missing_receipt['receipt_id'])
-        print("🔎 Verificação de receipt_data:", receipt_data)
+        print(" Verificação de receipt_data:", receipt_data)
 
         if not isinstance(receipt_data, dict):
             print(f"❌ Dados do recibo inválidos.")
@@ -140,12 +140,12 @@ class AccountPayment(models.Model):
         ], limit=1)
 
         if existing_payment:
-            print(f"🔁 Já existe um pagamento para o recibo {missing_receipt['receipt_id']} na fatura {invoice.name}")
+            print(f" Já existe um pagamento para o recibo {missing_receipt['receipt_id']} na fatura {invoice.name}")
             return False
 
-        print(f"📅 Data do recibo: {receipt_date}, 💰 Valor: {amount}")
+        print(f" Data do recibo: {receipt_date}, 💰 Valor: {amount}")
         if amount == 0.0:
-            print(f"⚠️ Valor do recibo é zero. Ignorado.")
+            print(f" Valor do recibo é zero. Ignorado.")
             return False
 
         journal = invoice.journal_id
@@ -154,7 +154,7 @@ class AccountPayment(models.Model):
                 ('type', 'in', ['bank', 'cash']),
                 ('company_id', '=', invoice.company_id.id)
             ], limit=1)
-            print(f"ℹ️ Diário substituído: {journal.name}")
+            print(f" Diário substituído: {journal.name}")
 
         if not journal:
             raise UserError("Nenhum diário do tipo 'bank' ou 'cash' disponível.")
@@ -165,7 +165,7 @@ class AccountPayment(models.Model):
 
         try:
             invoice._message_log(
-                body=f"📥 Pagamento TOC criado automaticamente para o recibo {receipt_id_str}"
+                body=f" Pagamento TOC criado automaticamente para o recibo {receipt_id_str}"
             )
 
             register_pay = self.env['account.payment.register'].with_context(
@@ -180,7 +180,7 @@ class AccountPayment(models.Model):
                 'group_payment': False,
             })
 
-            print(f"📝 Registrando pagamento para a fatura {invoice.name}, valor: {amount}")
+            print(f" Registrando pagamento para a fatura {invoice.name}, valor: {amount}")
             register_pay.action_create_payments()
             print(f"✅ Pagamento registado na fatura {invoice.name} via wizard")
 
@@ -195,13 +195,13 @@ class AccountPayment(models.Model):
             if receipt_id_str not in toc_receipt_ids:
                 toc_receipt_ids.append(receipt_id_str)
                 invoice.write({'toc_receipt_ids': json.dumps(toc_receipt_ids)})
-                print(f"📝 Atualizando toc_receipt_ids: {invoice.toc_receipt_ids}")
+                print(f" Atualizando toc_receipt_ids: {invoice.toc_receipt_ids}")
                 invoice.flush()
                 invoice.invalidate_cache()
-                print(f"📝 Recibo {receipt_id_str} adicionado à fatura {invoice.name}")
-                print(f"📥 Lista atualizada de recibos: {invoice.toc_receipt_ids}")
+                print(f" Recibo {receipt_id_str} adicionado à fatura {invoice.name}")
+                print(f" Lista atualizada de recibos: {invoice.toc_receipt_ids}")
             else:
-                print(f"ℹ️ Recibo {receipt_id_str} já estava na fatura {invoice.name}")
+                print(f" Recibo {receipt_id_str} já estava na fatura {invoice.name}")
 
             return True
 
@@ -217,12 +217,12 @@ class AccountPayment(models.Model):
         }
         endpoint = f"{self.base_url}/api/v1/commercial_sales_receipts/{receipt_id}"
 
-        print("➡️ Endpoint final:", endpoint)
+        print(" Endpoint final:", endpoint)
         response = requests.get(endpoint, headers=headers)
 
         if response.status_code == 200:
             data = response.json()
-            print(f"📦 Dados do recibo {receipt_id}:", data)
+            print(f" Dados do recibo {receipt_id}:", data)
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
             elif isinstance(data, dict):
@@ -231,5 +231,5 @@ class AccountPayment(models.Model):
                 print(f"❌ Formato inesperado para o recibo {receipt_id}")
                 return None
         else:
-            print(f"⚠️ Falha ao buscar recibo {receipt_id}. Status: {response.status_code} - {response.text}")
+            print(f" Falha ao buscar recibo {receipt_id}. Status: {response.status_code} - {response.text}")
             return None
