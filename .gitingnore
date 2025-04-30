@@ -7,5 +7,6 @@ venv/
 .env/
 
 # ignore temporary files
+##
 *.log
 *.tmp
