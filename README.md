@@ -2,7 +2,7 @@
 Portugal TOConline Integration
 ===============================
 
-..
+
 
 This project aims to integrate the ERP Odoo with the TOConline system, ensuring compliance with Portuguese tax regulations.
 
