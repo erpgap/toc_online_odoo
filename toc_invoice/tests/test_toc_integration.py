@@ -7,8 +7,8 @@ class TestTOCIntegration(TransactionCase):
     def setUp(self):
         super().setUp()
         self.partner = self.env['res.partner'].create({
-            'name': 'Test ',
-            'email': 'desconhecido@example.com',
+            'name': 'sera ',
+            'email': 'serao@example.com',
             'vat': '/',
             'street': 'Test Street',
             'city': 'Lisboa',
@@ -16,6 +16,13 @@ class TestTOCIntegration(TransactionCase):
             'country_id': self.env.ref('base.pt').id,
             'toc_online_id': '6059876'
         })
+
+        self.product = self.env['product.product'].create({
+
+            'default_code': 'FURN_0096',
+            'name': 'Desk',
+        })
+
         self.move = self.env['account.move'].create({
             'move_type': 'out_invoice',
             'partner_id': self.partner.id,
@@ -40,4 +47,5 @@ class TestTOCIntegration(TransactionCase):
 
         toc_customer_id = self.move.get_or_create_customer_in_toconline(access_token, self.partner)
         print("Client id is : " , toc_customer_id)
+
 

@@ -29,6 +29,7 @@
                   </div>
                   <div class="row mt16">
                      <div class="col-6">
+                        <h1>Access Token</h1>
                         <field name="toc_online_access_token"
                                string="Access Token"
                                readonly="1"

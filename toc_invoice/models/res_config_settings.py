@@ -23,6 +23,10 @@ class ResConfigSettings(models.TransientModel):
         string="TOConline Authorization Code",
         config_parameter='toc_online.authorization_code'
     )
+    toc_online_token_expiry = fields.Datetime(
+        string="TOConline Token Expiry Date",
+        config_parameter='toc_online.token_expiry'
+    )
 
     def get_values(self):
         res = super(ResConfigSettings, self).get_values()

@@ -12,7 +12,7 @@ class AccountPayment(models.Model):
     def sync_payments_from_toc(self):
         print(" Start TOC Sync --> Odoo")
 
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             print("TOConline token not defined.")
             return
@@ -195,7 +195,7 @@ class AccountPayment(models.Model):
             return False
 
     def get_receipt_data(self, receipt_id):
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",

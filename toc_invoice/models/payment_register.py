@@ -9,7 +9,7 @@ class AccountPaymentRegister(models.TransientModel):
 
 
     def get_total_paid_from_toc_by_receivable_id(self, toc_receipt_id):
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             raise UserError("TOConline token not defined.")
 
@@ -45,7 +45,7 @@ class AccountPaymentRegister(models.TransientModel):
 
         for wizard in self:
 
-            access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+            access_token = self.env['toc.api'].get_access_token()
             if not access_token:
                 raise UserError("TOConline access token not found")
 

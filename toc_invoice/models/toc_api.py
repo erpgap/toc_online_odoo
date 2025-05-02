@@ -1,10 +1,10 @@
 import requests
 from odoo import models, fields
 import base64
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs
 
 from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
-
+from datetime import datetime, timedelta
 
 class TocAPI(models.AbstractModel):
     _name = 'toc.api'
@@ -13,6 +13,7 @@ class TocAPI(models.AbstractModel):
 
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
+
 
     def get_authorization_url(self):
         """
@@ -23,21 +24,17 @@ class TocAPI(models.AbstractModel):
 
         client_id1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
 
-        url_aux = f"{self.auth_url}/auth?"
+        url_aux = f"{auth_url}/auth?"
         params = {
             "client_id": client_id1,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": "commercial"
         }
-
         headers = {
             "Content-Type": "application/json"
         }
-
-
         response = requests.get(url_aux, params=params, headers=headers, allow_redirects=False)
-
 
         if response.status_code == 302:
             redirect_url = response.headers.get('Location')
@@ -60,9 +57,6 @@ class TocAPI(models.AbstractModel):
         """
         Internal function that exchanges authorization_code for access_token and refresh_token.
         """
-        self.client_id = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
-        self.client_secret = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
-
         client_id1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
         client_secret1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
 
@@ -74,16 +68,14 @@ class TocAPI(models.AbstractModel):
         payload = {
             "grant_type": "authorization_code",
             "code": authorization_code,
-            "redirect_uri": self.redirect_uri
+            "redirect_uri": redirect_uri
         }
-
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Authorization": f"Basic {base64_credentials}"
         }
-
         try:
-            response = requests.post(self.token_url, data=payload, headers=headers)
+            response = requests.post(token_url, data=payload, headers=headers)
             print(f"Response Status Code: {response.status_code}")
             print(f"Response Body: {response.text}")
 
@@ -94,22 +86,64 @@ class TocAPI(models.AbstractModel):
         except Exception as e:
             return {"error": f"Request error: {str(e)}"}
 
-    def get_access_token(self, authorization_code):
+    def get_access_token(self):
         """
-            get the access_token.
+        Gets the access token, renewing it if necessary.
         """
-        tokens = self._get_tokens(authorization_code)
-        if "access_token" in tokens:
-            return tokens["access_token"]
+        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+
+        if access_token:
+            if self.is_token_expired():
+                return self.refresh_access_token()
+            return access_token
         else:
-            return {"error": tokens.get("error")}
+            return self.refresh_access_token()
 
     def get_refresh_token(self, authorization_code):
         """
-         get the refresh_token.
+         get the refresh_token
         """
         tokens = self._get_tokens(authorization_code)
         if "refresh_token" in tokens:
             return tokens["refresh_token"]
         else:
             return {"error": tokens.get("error")}
+
+    def get_expires_in(self, authorization_code):
+        """
+         get the expires_in
+        """
+        tokens = self._get_tokens(authorization_code)
+        if "expires_in" in tokens:
+            return tokens["expires_in"]
+        else:
+            return {"error": tokens.get("error")}
+
+    def is_token_expired(self):
+        """
+        Checks if the access token has expired.
+        """
+        token_expiry = self.env['ir.config_parameter'].sudo().get_param('toc_online.token_expiry')
+        if token_expiry:
+            expiry_datetime = datetime.strptime(token_expiry, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() > expiry_datetime:
+                return True
+        return False
+
+    def refresh_access_token(self):
+        """
+            Automatically renew access token.
+        """
+        authorization_code = self.env['ir.config_parameter'].sudo().get_param('toc_online.authorization_code')
+        if authorization_code:
+            tokens = self._get_tokens(authorization_code)
+            if "access_token" in tokens:
+                access_token = tokens["access_token"]
+                expires_in = tokens.get("expires_in", 3600)
+                expiry_datetime = datetime.now() + timedelta(seconds=expires_in)
+                self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', access_token)
+                self.env['ir.config_parameter'].sudo().set_param('toc_online.token_expiry',
+                                                                 expiry_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+                return access_token
+        return None
+
