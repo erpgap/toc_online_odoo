@@ -150,9 +150,9 @@ class CreditNoteWizard(models.TransientModel):
         url_base = self.invoice_id.get_base_url()
         invoice_toc_document_no = self.invoice_id.toc_document_no
 
-        # Dados do cliente
         document_data = self.get_document_lines(url_base, access_token, invoice_toc_document_no)
 
+        print("estes são so dados do meu cliente : --------------" , document_data)
         tax_region = self.invoice_id.getStateCompany()
         region_map = {"Madeira": "PT-MA", "Açores": "PT-AC", "Continente": "PT"}
         tax_region = region_map.get(tax_region, "PT")
@@ -179,7 +179,7 @@ class CreditNoteWizard(models.TransientModel):
             "customer_postcode": document_data.get("customer_postcode"),
             "customer_city": document_data.get("customer_city"),
             "customer_tax_country_region": tax_region,
-            "customer_country": tax_region,
+            "customer_country": document_data.get("customer_country"),
             "payment_mechanism": "MO",
             "vat_included_prices": False,
             "operation_country": tax_region,
@@ -204,6 +204,7 @@ class CreditNoteWizard(models.TransientModel):
             }],
         }
 
+        print("este são os meus dados da nota de credito : ------------------------", payload)
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
         response = requests.post(f"{url_base}/api/v1/commercial_sales_documents", json=payload, headers=headers)
 
