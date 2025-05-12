@@ -16,6 +16,7 @@
         'views/toc_invoice_list.xml',
         'data/ir_cron.xml',
         'data/ir_cron_sync_credit_note.xml',
+        'data/ir_cron_sync_invoice_toc.xml'
 
 
     ],
