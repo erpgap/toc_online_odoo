@@ -5,3 +5,5 @@ from . import res_company
 from . import res_partner
 from . import payment_register
 from . import payment
+from . import invoice_synchronization
+from . import credit_note_sync

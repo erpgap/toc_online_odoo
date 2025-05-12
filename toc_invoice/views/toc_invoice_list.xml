@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
   <record id="view_invoice_tree_toconline" model="ir.ui.view">
     <field name="name">account.invoice.list.toconline</field>
@@ -11,8 +12,6 @@
       <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
         <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund', 'out_receipt')</attribute>
       </xpath>
-
-
 
 
 

@@ -1,16 +1,21 @@
 from odoo import http
 from odoo.http import request
 
-class TOConlineOAuth(http.Controller):
+class TocOauthController(http.Controller):
 
     @http.route('/oauth/callback', type='http', auth='public', csrf=False)
-    def toc_oauth_callback(self, **kwargs):
-        authorization_code = kwargs.get('code')
+    def oauth_callback(self, **kwargs):
+        code = kwargs.get('code')
+        error = kwargs.get('error')
 
-        if not authorization_code:
-            return "Error: Authorization code not received."
+        if error:
+            return f"Erro recebido da TOConline: {error}"
 
-        # Armazena o código nos parâmetros do sistema
-        request.env['ir.config_parameter'].sudo().set_param('toc_online.authorization_code', authorization_code)
+        if not code:
+            return "Erro: Código de autorização não recebido."
 
-        return "Authorization completed. You can now send invoices to TOConline."
+        # Troca o code pelo token
+        toc_api = request.env['toc.api'].sudo()
+        tokens = toc_api._get_tokens(code)
+
+        return "Autenticação bem-sucedida com TOConline. Pode fechar esta janela."

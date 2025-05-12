@@ -316,8 +316,6 @@ class AccountMove(models.Model):
 
         response = requests.post(create_url, json=customer_payload, headers=headers)
 
-
-
         if response.status_code in (200, 201):
             customer_id = response.json()["data"]["id"]
             print(f"Client created successfully(ID: {customer_id})")
@@ -332,6 +330,7 @@ class AccountMove(models.Model):
                 raise UserError(_("❌ Error creating client in TOConline: %s") % error_msg)
 
     def get_or_create_product_in_toconline(self, access_token, product):
+
         if not product.default_code:
             raise UserError("O código do produto (default_code) está vazio.")
 
@@ -339,7 +338,6 @@ class AccountMove(models.Model):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}"
         }
-
         search_url = f"{TOC_BASE_URL}/api/products?filter[item_code]={product.default_code}"
         response = requests.get(search_url, headers=headers)
 
@@ -350,7 +348,6 @@ class AccountMove(models.Model):
 
         if product.list_price is None:
             raise UserError(f"O preço de venda (list_price) do produto {product.name} está vazio.")
-
         create_url = f"{TOC_BASE_URL}/api/products"
         product_payload = {
             "data": {
@@ -381,6 +378,16 @@ class AccountMove(models.Model):
         Sends the invoice data to TOConline.
         If the token has expired, it tries to renew it before sending.
         """
+
+        url = self.env['toc.api'].get_authorization_url()
+
+        print("este é o meu url :" , url)
+        autentica_code = self.env['toc.api']._extract_authorization_code_from_url(url)
+
+        print("o meu codigo de autenticação tem este valor -------------------------" , autentica_code)
+
+
+
         for record in self:
             if record.toc_status == 'sent':
                 raise UserError("This invoice has already been sent to TOConline.")
@@ -395,8 +402,11 @@ class AccountMove(models.Model):
                 record.toc_status = 'draft'
 
             access_token = self.env['toc.api'].get_access_token()
+
             if not access_token:
                 raise UserError("Could not get or refresh access token.")
+
+            print("este é meu acess_token:----------------" , access_token)
 
             toc_endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
             partner = record.partner_id
@@ -419,7 +429,6 @@ class AccountMove(models.Model):
                 if tax["attributes"]["tax_country_region"] == tax_region
             ]
 
-            print("estas são as minhas taxas : **************0", filtered_taxes)
             global_exemption_reason = None
             lines = []
 
@@ -452,7 +461,6 @@ class AccountMove(models.Model):
                     "tax_id":tax_id
                 })
 
-            print("Estas são as linhas:", lines)
 
             currency_obj = self.currency_id
             company_currency = self.company_id.currency_id
@@ -460,10 +468,12 @@ class AccountMove(models.Model):
             conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, self.company_id, date)
 
             payload = {
+                "document_no": None,
                 "document_type": "FT",
                 "status": 0,
                 "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
-                "finalize": 0,
+                "document_hash_sum": None,
+                #"finalize": 0,
                 "customer_tax_registration_number": partner.vat.strip() if partner.vat and partner.vat.strip() else "Desconhecido",
                 "customer_business_name": partner.name,
                 "customer_address_detail": partner.street or "",
@@ -474,8 +484,10 @@ class AccountMove(models.Model):
                 "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
                 "vat_included_prices": record.journal_id.vat_included_prices if hasattr(record.journal_id,
                                                                                         'vat_included_prices') else False,
+                "parent_documents_ids": None,
                 "operation_country": tax_region,
                 "currency_iso_code": record.currency_id.name,
+                "system_entry_date": None,
                 "currency_conversion_rate": conversion_rate,
                 "apply_retention_when_paid": True,
                 "notes": "Notas ao documento",
@@ -529,3 +541,19 @@ class AccountMove(models.Model):
             print(f"Client found on TOConline: {customers[0]['attributes']['business_name']}")
             return customers[0]["id"]
         return None
+
+
+    def open_credit_note_wizard(self):
+        self.ensure_one()
+
+        return {
+            'name': 'Send Credit Note',
+            'type': 'ir.actions.act_window',
+            'res_model': 'credit.note.wizard',
+            'view_mode': 'form',
+            'view_id': self.env.ref('toc_invoice.view_credit_note_popup').id,
+            'target': 'new',
+            'context': {
+                'default_invoice_id': self.id,
+            }
+        }

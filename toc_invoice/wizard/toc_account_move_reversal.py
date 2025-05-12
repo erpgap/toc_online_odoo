@@ -19,6 +19,11 @@ class CreditNoteWizard(models.TransientModel):
 
     total_value = fields.Float(string="Total Value")
 
+    l10npt_vat_exempt_reason = fields.Many2one(
+        'account.l10n_pt.vat.exempt.reason',
+        string="VAT Exempt Reason",
+        help="Reason for VAT exemption."
+    )
 
     def get_total_value(self):
         return self.total_value
@@ -152,7 +157,6 @@ class CreditNoteWizard(models.TransientModel):
 
         document_data = self.get_document_lines(url_base, access_token, invoice_toc_document_no)
 
-        print("estes são so dados do meu cliente : --------------" , document_data)
         tax_region = self.invoice_id.getStateCompany()
         region_map = {"Madeira": "PT-MA", "Açores": "PT-AC", "Continente": "PT"}
         tax_region = region_map.get(tax_region, "PT")
@@ -166,6 +170,14 @@ class CreditNoteWizard(models.TransientModel):
         tax_percentage = self.tax_percentage
         tax_info = self.invoice_id.get_tax_info(tax_percentage, tax_region, filtered_taxes)
         tax_code = tax_info["code"]
+
+        global_exemption_reason = None
+
+        if tax_percentage == 0 and not global_exemption_reason:
+            if self.l10npt_vat_exempt_reason:
+                global_exemption_reason = self.l10npt_vat_exempt_reason.id
+            else:
+                raise UserError("The VAT rate is 0%, but no exemption reason was given.")
 
         payload = {
             "document_type": "NC",
@@ -189,6 +201,7 @@ class CreditNoteWizard(models.TransientModel):
             "retention_type": "IRS",
             "apply_retention_when_paid": False,
             "notes": f"Credit note relating to the invoice: {invoice_toc_document_no}",
+            "tax_exemption_reason_id": global_exemption_reason,
             "lines": [{
                 "item_id": None,
                 "item_code": self.item_code.default_code if self.item_code else '',
@@ -200,11 +213,10 @@ class CreditNoteWizard(models.TransientModel):
                 "tax_country_region": tax_region,
 
                 "item_type": "Product",
-                "exemption_reason": None,
+                "exemption_reason": global_exemption_reason,
             }],
         }
 
-        print("este são os meus dados da nota de credito : ------------------------", payload)
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
         response = requests.post(f"{url_base}/api/v1/commercial_sales_documents", json=payload, headers=headers)
 
@@ -266,3 +278,5 @@ class CreditNoteWizard(models.TransientModel):
 
 
         return {'type': 'ir.actions.act_window_close'}
+
+
