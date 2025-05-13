@@ -42,6 +42,7 @@ class CreditNoteSync(models.Model):
                 if doc.get("document_type") == "NC"
                    and doc.get("document_no")
                    and doc.get("date")
+                   and doc.get("status") != 4
             ]
 
             toc_doc_nos = [doc.get("document_no") for doc in toc_nc_docs]
@@ -63,68 +64,67 @@ class CreditNoteSync(models.Model):
             _logger.error("Error during NC fetch: %s", str(e), exc_info=True)
             raise UserError(f"Erro: {str(e)}")
 
-    def create_invoice_from_toc_document(self, toc_document_data, partner_id):
-        document_no = toc_document_data.get('documentNo')
-        if not document_no:
-            raise UserError("Número do documento TOC não encontrado.")
+    def create_credit_note_in_odoo(self, toc_document_data):
+        """Creates the credit note in Odoo based on the complete data from TOConline"""
+        toc_document_id = toc_document_data.get('id')
+        document_no = toc_document_data.get('document_no')
 
-        # Verifica se já existe uma fatura com esse número TOC
-        existing_invoice = self.env['account.move'].search([
-            ('toc_document_no', '=', document_no)
-        ], limit=1)
+        toc_document = self._get_toc_document_by_id(toc_document_id)
 
-        if existing_invoice:
-            raise UserError(f"Já existe uma fatura com o número TOC {document_no}.")
+        if not toc_document:
+            raise UserError(f"Credit document{document_no} not found in TOConline.")
 
-        # Obter o ID da empresa enviado pelo TOConline
-        toc_company_id = toc_document_data.get('company_id')
-        if not toc_company_id:
-            raise UserError("ID da empresa não foi fornecido no documento TOC.")
+        if isinstance(toc_document, dict):
+            toc_client_id = toc_document.get('customer_id')
+        else:
+            raise UserError(f"Unexpected format for toc_document: {type(toc_document)}")
 
-        # Mapear o ID do TOConline para o ID da empresa no Odoo
-        company = self.env['res.company'].search([('toc_online_id', '=', toc_company_id)], limit=1)
-        if not company:
-            raise UserError(f"Empresa com TOConline ID {toc_company_id} não encontrada no Odoo.")
+        partner_id = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
+        if not partner_id:
+            raise UserError(f"Customer with TOConline ID{toc_client_id} not found in Odoo.")
 
-        # Buscar um produto da empresa
-        product = self.env['product.product'].with_company(company).search([], limit=1)
-        if not product:
-            raise UserError("Nenhum produto encontrado para criar a linha da fatura.")
+        parent_doc_no = toc_document.get('parent_document_reference')
+        if not parent_doc_no:
+            raise UserError(f"credit note {document_no} has no reference to the original invoice.")
 
-        # Filtrar os impostos da empresa correta
-        taxes = product.taxes_id.filtered(lambda t: t.company_id == company)
+        invoice_id = self.env['account.move'].search([('toc_document_no', '=', parent_doc_no)], limit=1)
+        if not invoice_id:
+            raise UserError(f"Original invoice with TOC no.{parent_doc_no}not found.")
 
-        # Buscar o diário de vendas da empresa correta
-        journal = self.env['account.journal'].search([
-            ('type', '=', 'sale'),
-            ('company_id', '=', company.id)
-        ], limit=1)
+        company_id = invoice_id.company_id
 
-        if not journal:
-            raise UserError("Nenhum diário de vendas encontrado para a empresa selecionada.")
+        print("este é o id da minha empresa" , company_id)
 
-        # Criar os valores da fatura
-        invoice_vals = {
-            'move_type': 'out_invoice',
+        valid_taxes = invoice_id.invoice_line_ids[0].tax_ids.filtered(
+            lambda t: not (t.amount == 0 and t.company_id != company_id)
+        )
+
+        print("estas são as minhas taxas " , valid_taxes)
+        credit_note_vals = {
+            'move_type': 'out_refund',
             'partner_id': partner_id.id,
             'invoice_date': fields.Date.today(),
-            'journal_id': journal.id,
-            'company_id': company.id,
             'invoice_line_ids': [(0, 0, {
-                'product_id': product.id,
-                'name': f"Fatura TOC {document_no}",
+                'product_id': invoice_id.invoice_line_ids[0].product_id.id,
+                'name': f"Nota de Crédito para fatura {parent_doc_no}",
                 'quantity': 1.0,
-                'price_unit': toc_document_data.get('total', 0),
-                'tax_ids': [(6, 0, taxes.ids)],
+                'price_unit': invoice_id.invoice_line_ids[0].price_unit,
+                'tax_ids': [(6, 0, valid_taxes.ids)],
             })],
-            'toc_document_no': document_no,
+            'toc_document_no_credit_note': document_no,
+            'company_id': company_id.id,
+            'toc_status': 'sent',
+            'toc_status_credit_note' : 'sent'
+
         }
 
-        # Criar e validar a fatura no contexto da empresa correta
-        invoice = self.env['account.move'].with_company(company).create(invoice_vals)
-        invoice.action_post()
+        credit_note = self.env['account.move'].create(credit_note_vals)
 
-        return invoice
+        if not credit_note:
+            raise UserError("Error creating credit note in Odoo.")
+
+        _logger.info(f"credit note {document_no} successfully created in Odoo.")
+        return credit_note
 
     def _get_toc_document_by_id(self, toc_document_id):
         """Retrieves TOConline credit document based on ID"""
