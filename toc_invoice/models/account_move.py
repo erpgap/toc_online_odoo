@@ -3,6 +3,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import logging
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+import json
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -22,6 +23,7 @@ class AccountMove(models.Model):
     toc_invoice_url = fields.Char(string="TOConline Invoice URL")
     checkbox = fields.Boolean(string="Checkbox marked", default=True)
     toc_document_no = fields.Char(string="TOConline Document Number")
+    toc_document_id = fields.Char(string="TOConline Document Number")
     toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
 
     toc_display_number = fields.Char(string="TOConline Number. (Visualization)", compute="_compute_toc_display_number", store=True)
@@ -381,12 +383,10 @@ class AccountMove(models.Model):
 
         url = self.env['toc.api'].get_authorization_url()
 
-        print("este é o meu url :" , url)
+        print("este é o meu url:", url)
         autentica_code = self.env['toc.api']._extract_authorization_code_from_url(url)
 
-        print("o meu codigo de autenticação tem este valor -------------------------" , autentica_code)
-
-
+        print("o meu código de autenticação tem este valor -------------------------", autentica_code)
 
         for record in self:
             if record.toc_status == 'sent':
@@ -406,12 +406,12 @@ class AccountMove(models.Model):
             if not access_token:
                 raise UserError("Could not get or refresh access token.")
 
-            print("este é meu acess_token:----------------" , access_token)
+            print("este é meu access_token: ----------------", access_token)
 
-            toc_endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
+            toc_endpoint = f"{TOC_BASE_URL}/api/commercial_sales_documents"
             partner = record.partner_id
             if not all([partner.name, partner.street, partner.city, partner.country_id, partner.zip]):
-                raise UserError("Customer must have name, address, city, country and postal code filled in.")
+                raise UserError("Customer must have name, address, city, country, and postal code filled in.")
 
             customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
 
@@ -454,13 +454,11 @@ class AccountMove(models.Model):
                     "unit_price": line.price_unit,
                     "tax_code": tax_code,
                     "tax_percentage": tax_percentage_toc,
-
                     "tax_country_region": tax_region,
                     "item_type": "Product",
-                    "exemption_reason": None,
-                    "tax_id":tax_id
+                    "exemption_reason":None,
+                    "tax_id": tax_id
                 })
-
 
             currency_obj = self.currency_id
             company_currency = self.company_id.currency_id
@@ -468,38 +466,32 @@ class AccountMove(models.Model):
             conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, self.company_id, date)
 
             payload = {
-                "document_no": None,
-                "document_type": "FT",
-                "status": 0,
-                "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
-                "document_hash_sum": None,
-                #"finalize": 0,
-                "customer_tax_registration_number": partner.vat.strip() if partner.vat and partner.vat.strip() else "Desconhecido",
-                "customer_business_name": partner.name,
-                "customer_address_detail": partner.street or "",
-                "customer_postcode": partner.zip or "",
-                "customer_city": partner.city or "",
-                "customer_tax_country_region": tax_region,
-                "customer_country": partner.country_id.code or "",
-                "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
-                "vat_included_prices": record.journal_id.vat_included_prices if hasattr(record.journal_id,
-                                                                                        'vat_included_prices') else False,
-                "parent_documents_ids": None,
-                "operation_country": tax_region,
-                "currency_iso_code": record.currency_id.name,
-                "system_entry_date": None,
-                "currency_conversion_rate": conversion_rate,
-                "apply_retention_when_paid": True,
-                "notes": "Notas ao documento",
-                "tax_exemption_reason_id": global_exemption_reason,
-                "lines": lines,
+                "data": {
+                    "type": "commercial_sales_documents",
+                    "attributes": {
+                        "document_type": "FT",
+                        "date": record.invoice_date.strftime("%Y-%m-%d") if record.invoice_date else "",
+                        "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
+                        "customer_id": customer_id,
+                        "vat_included_prices": False,
+                        "operation_country": tax_region,
+                        "currency_iso_code": record.currency_id.name,
+                        "currency_conversion_rate": conversion_rate,
+                        "retention_type": "IRS",
+                        "apply_retention_when_paid": True,
+                        "notes": "Notas ao documento",
+                        "external_reference": "Referência do documento externo",
+                        "tax_exemption_reason_id": global_exemption_reason,
+                    }
+                }
             }
-
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}"
             }
+
             response = requests.post(toc_endpoint, json=payload, headers=headers, timeout=120)
+
 
             if response.status_code != 200:
                 raise UserError(
@@ -507,7 +499,46 @@ class AccountMove(models.Model):
                 )
 
             data = response.json()
+            document_id = data.get("data", {}).get("id", "")
+
+            if not document_id:
+                raise UserError("Error: Document ID not returned by TOConline.")
+
+            self.write({'toc_document_id': document_id})
+
             document_no = data.get('document_no', '')
+
+
+
+
+            for line in lines:
+                line_payload = {
+                    "data": {
+                        "type": "commercial_sales_document_lines",
+                        "attributes": {
+                            "document_id": int(document_id),
+                            "item_type": "Product",
+                            "quantity": line["quantity"],
+                            "unit_price": line["unit_price"],
+                            "item_id": line["item_id"],
+                            "unit_of_measure_id": 58034,
+                            "tax_id": line["tax_id"],
+                        }
+                    }
+                }
+
+                line_response = requests.post(
+                    f"{TOC_BASE_URL}/api/commercial_sales_document_lines",
+                    json=line_payload,
+                    headers=headers,
+                    timeout=120
+                )
+
+                if line_response.status_code != 200:
+                    raise UserError(
+                        f"Erro ao adicionar linha à fatura TOConline. Código: {line_response.status_code}. Corpo: {line_response.text}"
+                    )
+
 
             record.write({
                 'toc_status': 'sent',
@@ -516,6 +547,58 @@ class AccountMove(models.Model):
             })
 
             self.env.cr.commit()
+
+    def finalize_invoice(self):
+        """
+        Finalize the invoice in TOConline based on the previously stored ID.
+        """
+        document_id = self.toc_document_id
+
+        if not document_id:
+            document_id = self.create_toc_invoice()
+
+        url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+
+        payload = {
+            "data": {
+                "type": "commercial_sales_documents",
+                "id": str(document_id),
+                "attributes": {
+                    "status": 1
+                }
+            }
+        }
+
+        print("este é o payload", json.dumps(payload, indent=4))
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.env['toc.api'].get_access_token()}"
+        }
+
+        try:
+            response = requests.patch(url, json=payload, headers=headers, timeout=120)
+
+            if response.status_code != 200:
+                raise UserError(
+                    f"Error finalizing invoice in TOConline. Status Code: {response.status_code}. Response: {response.text}"
+                )
+
+            data = response.json()
+            document_no = data.get('data', {}).get('attributes', {}).get('document_no', None)
+
+            if not document_no:
+                raise UserError("Error: Document number not found in response.")
+
+            self.write({
+                'toc_document_no': document_no,
+                'toc_status': 'sent'
+            })
+
+            return document_no
+
+        except requests.exceptions.RequestException as e:
+            raise UserError(f"Error in request to TOConline: {str(e)}")
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
         """
