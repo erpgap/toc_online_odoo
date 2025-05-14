@@ -12,7 +12,7 @@ class InvoiceSync(models.Model):
 
     @api.model
     def sync_invoices_from_toc(self):
-        """Synchronization of invoices existing in TOCOnline and not in odoo"""
+        """Synchronization of invoices existing in TOCOnline and not in Odoo"""
 
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
 
@@ -36,39 +36,47 @@ class InvoiceSync(models.Model):
 
             toc_ft_docs = [
                 doc for doc in documents
-                if doc.get("document_type") == "FT" and doc.get("document_no") and doc.get("id")
+                if doc.get("document_type") == "FT" and doc.get("id")
             ]
 
-            toc_doc_nos = [doc["document_no"] for doc in toc_ft_docs]
-
             existing_invoices = self.env['account.move'].search([
-                ('move_type', '=', 'out_invoice'),
-                ('toc_document_no', '!=', False)
+                ('move_type', '=', 'out_invoice')
             ])
-            existing_toc_nos = set(existing_invoices.mapped('toc_document_no'))
+            existing_toc_nos = set(
+                existing_invoices.filtered(lambda inv: inv.toc_document_no).mapped('toc_document_no'))
+            existing_toc_ids = set(
+                existing_invoices.filtered(lambda inv: inv.toc_document_id).mapped('toc_document_id'))
 
-            toc_not_in_odoo = [doc for doc in toc_ft_docs if doc["document_no"] not in existing_toc_nos]
+            for doc in toc_ft_docs:
+                document_no = doc.get("document_no")
+                toc_id = str(doc.get("id"))
 
-            print("=== Documents already in ODOO (%d) ===" % len(existing_toc_nos))
-            for doc_no in existing_toc_nos:
-                print("Present in Odoo: %s" % doc_no)
+                if document_no:
+                    if document_no in existing_toc_nos:
+                        #_logger.info(f"Fatura já existe no Odoo com document_no: {document_no}")
+                        continue
+                else:
+                    if toc_id in existing_toc_ids:
+                        #_logger.info(f"Fatura sem document_no já existe no Odoo com toc_id: {toc_id}")
+                        continue
+                    else:
+                        _logger.warning(f"Documento TOC com ID {toc_id} não tem 'document_no', mas será processado.")
 
-            print("=== MISSING DOCUMENTS (%d) ===" % len(toc_not_in_odoo))
-            for doc in toc_not_in_odoo:
-                print("Missing in Odoo: %s | customer_id: %s" % (doc["document_no"], doc.get("customer_id")))
-
-            for doc in toc_not_in_odoo:
                 try:
                     self.create_invoice_in_odoo(doc)
                 except Exception as e:
-                    _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
+                    _logger.error("Erro ao criar fatura (ID TOC %s): %s", toc_id, str(e))
 
         except Exception as e:
-            _logger.error("Error during synchronization: %s", str(e), exc_info=True)
-            raise UserError(f"Error: {str(e)}")
+            _logger.error("Erro durante a sincronização: %s", str(e), exc_info=True)
+            raise UserError(f"Erro: {str(e)}")
+
+
+        except Exception as e:
+            _logger.error("Erro durante a sincronização: %s", str(e), exc_info=True)
+            raise UserError(f"Erro: {str(e)}")
 
     def _map_toc_tax_to_odoo_tax(self, tax_code, tax_percentage, company):
-        """Mapeia o imposto TOC para o imposto do Odoo"""
         Tax = self.env['account.tax']
 
         if tax_percentage == 0:
@@ -90,27 +98,43 @@ class InvoiceSync(models.Model):
         return tax
 
     def create_invoice_in_odoo(self, toc_document_data):
-        toc_document_id = toc_document_data.get('id')
         document_no = toc_document_data.get('document_no')
 
+        existing_invoice = self.env['account.move'].search([
+            ('toc_document_no', '=', document_no),
+            ('move_type', '=', 'out_invoice')
+        ], limit=1)
+
+        if existing_invoice:
+            _logger.warning(f"Fatura já existente no Odoo: {document_no} (ID {existing_invoice.id}) — não será criada novamente.")
+            return existing_invoice
+
+        toc_document_id = toc_document_data.get('id')
         toc_document = self._get_toc_document_by_id(toc_document_id)
         if not toc_document:
             raise UserError(f"Invoice {document_no} not found in TOConline.")
 
         toc_client_id = toc_document.get('customer_id')
-        partner_id = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
-        if not partner_id:
-            raise UserError(f"Client TOConline ID {toc_client_id} not found in Odoo.")
+        partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
+
+        if not partner:
+            partner_name = toc_document.get('customer_name') or 'Cliente TOC'
+            partner_vat = toc_document.get('customer_tax_id') or ''
+            partner_email = toc_document.get('customer_email') or ''
+            partner_phone = toc_document.get('customer_phone') or ''
+
+            partner = self.env['res.partner'].create({
+                'name': partner_name,
+                'toc_online_id': toc_client_id,
+                'vat': partner_vat,
+                'email': partner_email,
+                'phone': partner_phone,
+                'customer_rank': 1,
+            })
+            _logger.info(f"Cliente criado no Odoo: {partner.name} (ID TOC: {toc_client_id})")
 
         company = self.env['res.company'].browse(2)
         _logger.info(f"Forçando empresa com ID = {company.id} e nome = {company.name}")
-
-        if company:
-            print(">>> Empresa encontrada:", company.name, "| ID:", company.id, "| TOC ID:", company.toc_company_id)
-        else:
-            company = self.env.company
-            print(">>> Empresa padrão usada:", company.name, "| ID:", company.id)
-
         self = self.with_company(company)
 
         journal = self.env['account.journal'].search([
@@ -128,9 +152,6 @@ class InvoiceSync(models.Model):
 
         invoice_lines = []
         for line in toc_document.get('lines', []):
-            print("Tax Code:", line.get('tax_code'))
-            print("Tax Percentage:", line.get('tax_percentage'))
-
             product = self.env['product.product'].search([('default_code', '=', line.get('item_code'))], limit=1)
             if not product:
                 product = self.env['product.product'].create({
@@ -149,8 +170,6 @@ class InvoiceSync(models.Model):
             )
             tax_ids = [(6, 0, [tax.id])] if tax else []
 
-            print("Tax IDs aplicados:", tax_ids)
-
             invoice_lines.append((0, 0, {
                 'product_id': product.id,
                 'name': line.get('description', 'Produto TOC'),
@@ -159,20 +178,41 @@ class InvoiceSync(models.Model):
                 "tax_ids": tax_ids,
             }))
 
+        status = toc_document.get('status', '')
+        toc_invoice_status = ''
+        toc_invoice_finalize = ''
+
+        try:
+            status_int = int(status)
+        except (ValueError, TypeError):
+            status_int = -1
+
+        if status_int == 0:
+            toc_invoice_status = 'sent'
+            toc_invoice_finalize = 'draft'
+        elif status_int == 1:
+            toc_invoice_status = 'sent'
+            toc_invoice_finalize = 'sent'
+        elif status_int == 4:
+            toc_invoice_status = 'sent'
+            toc_invoice_finalize = 'cancelled'
+
         invoice_vals = {
             'move_type': 'out_invoice',
-            'partner_id': partner_id.id,
+            'partner_id': partner.id,
             'invoice_date': toc_document.get('date', fields.Date.today()),
             'journal_id': journal.id,
             'company_id': company.id,
             'currency_id': currency.id,
             'invoice_line_ids': invoice_lines,
             'toc_document_no': document_no,
-            'toc_status': 'sent',
+            'toc_status': toc_invoice_status,
+            'toc_status_finalize': toc_invoice_finalize
         }
 
         invoice = self.env['account.move'].create(invoice_vals)
         invoice.action_post()
+        _logger.info(f"Fatura criada no Odoo: {invoice.name} (TOC Nº {document_no})")
         return invoice
 
     def _get_toc_document_by_id(self, toc_document_id):
@@ -188,8 +228,8 @@ class InvoiceSync(models.Model):
             if response.status_code == 200:
                 return response.json()
             else:
-                _logger.error(f"Error when searching for documentTOC ID {toc_document_id}: {response.text}")
+                _logger.error(f"Error when searching for document TOC ID {toc_document_id}: {response.text}")
                 return None
         except Exception as e:
-            _logger.error(f"Error connecting to TOConline for documentID {toc_document_id}: {str(e)}")
+            _logger.error(f"Error connecting to TOConline for document ID {toc_document_id}: {str(e)}")
             return None

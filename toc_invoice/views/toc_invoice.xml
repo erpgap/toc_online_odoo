@@ -13,6 +13,10 @@
             <field name="toc_display_number" invisible="not toc_display_number" readonly="1"/>
             <span invisible="toc_display_number">draft</span>
           </h1>
+          <h1>
+            <field name="toc_document_id"  readonly="1"/>
+            <span invisible="toc_document_id">draft</span>
+          </h1>
         </div>
       </xpath>
 
@@ -22,7 +26,7 @@
                 type="object"
                 string="Send Invoice TOConline"
                 class="btn-primary"
-                invisible="state != 'posted' or toc_status == 'sent' or checkbox != True"/>
+                invisible="state != 'posted' or toc_status == 'sent' or checkbox != True or toc_status == 'cancelled'"/>
       </xpath>
 
       <xpath expr="//header" position="inside">
@@ -48,7 +52,7 @@
       <xpath expr="//group//div[@class='d-flex']" position="after">
         <div style="display: flex; align-items: center; margin-right: 20px;">
           <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;" invisible="state != 'posted'"/>
-          <field name="checkbox" class="my-green-checkbox" readonly="toc_status == 'sent'" invisible="state != 'posted'"/>
+          <field name="checkbox" class="my-green-checkbox" readonly="toc_status == 'sent' or toc_status == 'cancelled'" invisible="state != 'posted'"/>
         </div>
       </xpath>
     </field>

@@ -42,7 +42,6 @@ class CreditNoteSync(models.Model):
                 if doc.get("document_type") == "NC"
                    and doc.get("document_no")
                    and doc.get("date")
-                   and doc.get("status") != 4
             ]
 
             toc_doc_nos = [doc.get("document_no") for doc in toc_nc_docs]

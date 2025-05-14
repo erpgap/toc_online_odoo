@@ -511,12 +511,14 @@ class AccountMove(models.Model):
             data = response.json()
             document_id = data.get("data", {}).get("id", "")
 
+            print(" este +e o id do meu dpcumento ++++++++++++++++++++" , document_id)
             if not document_id:
                 raise UserError("Erro: ID do documento não retornado pelo TOConline.")
 
             self.write({'toc_document_id': document_id})
 
             document_no = data.get('document_no', '')
+
 
 
 
@@ -553,7 +555,8 @@ class AccountMove(models.Model):
             record.write({
                 'toc_status': 'sent',
                 'toc_invoice_url': data.get('invoice_url', ''),
-                'toc_document_no': document_no
+                'toc_document_no': document_no,
+                'toc_document_id' : document_id
             })
 
             self.env.cr.commit()
@@ -596,7 +599,10 @@ class AccountMove(models.Model):
 
             data = response.json()
             document_no = data.get('data', {}).get('attributes', {}).get('document_no', None)
+            id = data.get('data', {}).get('attributes', {}).get('id', None)
 
+
+            print("este é o id da fatura enviada +++++++" , id)
             if not document_no:
                 raise UserError("Error: Document number not found in response.")
 
