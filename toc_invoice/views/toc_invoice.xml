@@ -16,7 +16,6 @@
         </div>
       </xpath>
 
-      <!-- Botão para enviar a fatura para o TOConline -->
       <xpath expr="//header" position="inside">
         <button
                 name="action_send_invoice_to_toconline"
@@ -32,10 +31,20 @@
                 type="object"
                 string="Finalize Invoice"
                 class="btn-success"
-                invisible="state != 'posted'"/>
+                invisible="state != 'posted' or toc_status_finalize == 'sent' or toc_status != 'sent'" />
       </xpath>
 
-      <!-- Checkbox TOConline -->
+      <xpath expr="//header" position="inside">
+        <button
+                name="open_cancel_invoice_wizard"
+                type="object"
+                string="Anular Fatura TOConline"
+                class="btn-danger"
+                invisible="state != 'posted' or toc_status != 'sent'" />
+      </xpath>
+
+
+
       <xpath expr="//group//div[@class='d-flex']" position="after">
         <div style="display: flex; align-items: center; margin-right: 20px;">
           <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;" invisible="state != 'posted'"/>

@@ -1,0 +1,24 @@
+<odoo>
+  <record id="view_cancel_invoice_wizard" model="ir.ui.view">
+    <field name="name">cancel.invoice.wizard.form</field>
+    <field name="model">cancel.invoice.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Cancel Invoice TOConline">
+        <group>
+          <field name="cancel_reason"/>
+        </group>
+        <footer>
+          <button string="Confirm" type="object" name="confirm_cancel_invoice" class="btn-primary"/>
+          <button string="Cancel" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="action_cancel_invoice_wizard" model="ir.actions.act_window">
+    <field name="name">Cancel Invoice</field>
+    <field name="res_model">cancel.invoice.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="target">new</field>
+  </record>
+</odoo>

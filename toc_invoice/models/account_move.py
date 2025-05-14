@@ -11,13 +11,21 @@ class AccountMove(models.Model):
     toc_status = fields.Selection([
         ('draft', 'draft'),
         ('sent', 'sent'),
-        ('error', 'Error')
+        ('error', 'Error'),
+        ('cancelled', 'cancelled'),
+
     ], string="TOConline Status", default='draft')
 
     toc_status_credit_note = fields.Selection([
         ('draft', 'draft'),
         ('sent', 'sent'),
         ('error', 'Error')
+    ], string="TOConline Status", default='draft')
+
+    toc_status_finalize = fields.Selection([
+        ('draft', 'draft'),
+        ('sent', 'sent'),
+        ('error', 'Error'),
     ], string="TOConline Status", default='draft')
 
     toc_invoice_url = fields.Char(string="TOConline Invoice URL")
@@ -443,6 +451,7 @@ class AccountMove(models.Model):
                 if tax_percentage == 0 and not global_exemption_reason:
                     if record.l10npt_vat_exempt_reason:
                         global_exemption_reason = record.l10npt_vat_exempt_reason.id
+                        global_name = record.l10npt_vat_exempt_reason.name
                     else:
                         raise UserError("The VAT rate is 0%, but no exemption reason was given.")
 
@@ -485,6 +494,7 @@ class AccountMove(models.Model):
                     }
                 }
             }
+            print("este é o teste ------------------------", json.dumps(payload, indent=4))
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}"
@@ -502,7 +512,7 @@ class AccountMove(models.Model):
             document_id = data.get("data", {}).get("id", "")
 
             if not document_id:
-                raise UserError("Error: Document ID not returned by TOConline.")
+                raise UserError("Erro: ID do documento não retornado pelo TOConline.")
 
             self.write({'toc_document_id': document_id})
 
@@ -592,13 +602,62 @@ class AccountMove(models.Model):
 
             self.write({
                 'toc_document_no': document_no,
-                'toc_status': 'sent'
+                'toc_status': 'sent',
+                'toc_status_finalize': 'sent'
             })
 
             return document_no
 
         except requests.exceptions.RequestException as e:
-            raise UserError(f"Error in request to TOConline: {str(e)}")
+            raise UserError(f"Erro na requisição para o TOConline: {str(e)}")
+
+
+    def action_cancel_invoice_toconline(self):
+        """
+        Cancels the invoice in TOConline by setting its status to 4 (voided).
+        Requires the user to input a reason.
+        """
+        for record in self:
+            if not record.toc_document_id:
+                raise UserError("This invoice was not sent to TOConline or is missing the TOConline document ID.")
+
+            if record.toc_status != 'sent':
+                raise UserError("Only invoices already sent to TOConline can be canceled.")
+
+            reason = self.env.context.get('cancel_reason')
+            if not reason:
+                raise UserError("You must provide a reason to cancel the invoice.")
+
+            access_token = self.env['toc.api'].get_access_token()
+            if not access_token:
+                raise UserError("Could not obtain access token for TOConline.")
+
+            cancel_payload = {
+                "data": {
+                    "type": "commercial_sales_documents",
+                    "id": str(record.toc_document_id),
+                    "attributes": {
+                        "status": 4,
+                        "voided_reason": reason
+                    }
+                }
+            }
+
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+
+            url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+            response = requests.patch(url, json=cancel_payload, headers=headers)
+
+            if response.status_code != 200:
+                raise UserError(
+                    f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}"
+                )
+
+            record.write({'toc_status': 'cancelled'})
+            self.env.cr.commit()
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
         """
@@ -639,4 +698,13 @@ class AccountMove(models.Model):
             'context': {
                 'default_invoice_id': self.id,
             }
+        }
+
+    def open_cancel_invoice_wizard(self):
+        return {
+            'type': 'ir.actions.act_window',
+            'res_model': 'cancel.invoice.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_cancel_reason': '', 'active_id': self.id},
         }
