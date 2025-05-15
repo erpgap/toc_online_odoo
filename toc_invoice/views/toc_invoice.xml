@@ -13,10 +13,6 @@
             <field name="toc_display_number" invisible="not toc_display_number" readonly="1"/>
             <span invisible="toc_display_number">draft</span>
           </h1>
-          <h1>
-            <field name="toc_document_id"  readonly="1"/>
-            <span invisible="toc_document_id">draft</span>
-          </h1>
         </div>
       </xpath>
 
@@ -29,14 +25,6 @@
                 invisible="state != 'posted' or toc_status == 'sent' or checkbox != True or toc_status == 'cancelled'"/>
       </xpath>
 
-      <xpath expr="//header" position="inside">
-        <button
-                name="finalize_invoice"
-                type="object"
-                string="Finalize Invoice"
-                class="btn-success"
-                invisible="state != 'posted' or toc_status_finalize == 'sent' or toc_status != 'sent'" />
-      </xpath>
 
       <xpath expr="//header" position="inside">
         <button
@@ -47,7 +35,16 @@
                 invisible="state != 'posted' or toc_status != 'sent'" />
       </xpath>
 
+      <xpath expr="//group//div[@class='d-flex']" position="before">
+                  <div style="border: 2px solid red; padding: 10px; border-radius: 5px; margin-top: 10px; background-color: #ffe6e6;">
 
+      <group>
+      <h1>Documento anulado</h1>
+      <field name="cancellation_reason" string="Motivo da Anulação" readonly="1" invisible="toc_status != 'cancelled'"/>
+      <field name="cancellation_date" string="Data da Anulação" readonly="1" invisible="toc_status != 'cancelled'"/>
+    </group>
+        </div>
+      </xpath>
 
       <xpath expr="//group//div[@class='d-flex']" position="after">
         <div style="display: flex; align-items: center; margin-right: 20px;">
