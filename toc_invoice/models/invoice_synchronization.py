@@ -14,7 +14,7 @@ class InvoiceSync(models.Model):
     def sync_invoices_from_toc(self):
         """Synchronization of invoices existing in TOCOnline and not in odoo"""
 
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             raise UserError("TOConline access token not found.")
 
@@ -117,6 +117,7 @@ class InvoiceSync(models.Model):
                 'tax_ids': [(6, 0, taxes.ids)],
             })],
             'toc_document_no': document_no,
+
         }
 
         invoice = self.env['account.move'].create(invoice_vals)
@@ -125,7 +126,7 @@ class InvoiceSync(models.Model):
         return invoice
 
     def _get_toc_document_by_id(self, toc_document_id):
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
         headers = {
             "Content-Type": "application/json",

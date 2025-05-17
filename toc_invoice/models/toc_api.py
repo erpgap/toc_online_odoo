@@ -1,4 +1,5 @@
 import requests
+from gevent.resolver.cares import Result
 from odoo import models, fields
 import base64
 from urllib.parse import urlparse, parse_qs
@@ -128,6 +129,10 @@ class TocAPI(models.AbstractModel):
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         token_expiry = self.env['ir.config_parameter'].sudo().get_param('toc_online.token_expiry')
 
+
+        Result = self.is_token_expired()
+
+        print("ESTE é o resultado da expiração" , Result)
         print("Access Token atual:", access_token)
         print("Expiração do Token:", token_expiry)
 
@@ -138,7 +143,6 @@ class TocAPI(models.AbstractModel):
                 access_token = self.refresh_access_token()
             except UserError as refresh_error:
                 print("Falha ao renovar com refresh_token:", refresh_error)
-                # Só tenta novo código se o refresh falhar
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.token_expiry', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.refresh_token', '')

@@ -4,46 +4,38 @@
     <field name="model">account.move</field>
     <field name="inherit_id" ref="account.view_move_form"/>
     <field name="arch" type="xml">
+
       <xpath expr="//div[@class='oe_title']" position="replace">
-        <div class="oe_title">
-          <span class="o_form_label">
-            <field name="move_type" readonly="1" invisible="move_type == 'entry'" nolabel="1"/>
-          </span>
-          <h1>
-            <field name="toc_display_number" invisible="not toc_display_number" readonly="1"/>
-            <span invisible="toc_display_number">draft</span>
-          </h1>
+        <div class="oe_title" style="display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <span class="o_form_label">
+              <field name="move_type" readonly="1" invisible="move_type == 'entry'" nolabel="1"/>
+            </span>
+            <h1 style="margin: 0;">
+              <field name="toc_display_number" invisible="not toc_display_number" readonly="1"/>
+              <span invisible="toc_display_number">draft</span>
+            </h1>
+          </div>
         </div>
       </xpath>
 
       <xpath expr="//header" position="inside">
         <button
-                name="action_send_invoice_to_toconline"
-                type="object"
-                string="Send Invoice TOConline"
-                class="btn-primary"
-                invisible="state != 'posted' or toc_status == 'sent' or checkbox != True or toc_status == 'cancelled'"/>
+          name="action_send_invoice_to_toconline"
+          type="object"
+          string="Send Invoice TOConline"
+          class="btn btn-primary"
+          invisible="state != 'posted' or toc_status == 'sent' or checkbox != True or toc_status == 'cancelled'" />
       </xpath>
-
 
       <xpath expr="//header" position="inside">
         <button
-                name="open_cancel_invoice_wizard"
-                type="object"
-                string="Anular Fatura TOConline"
-                class="btn-danger"
-                invisible="state != 'posted' or toc_status != 'sent'" />
-      </xpath>
-
-      <xpath expr="//group//div[@class='d-flex']" position="before">
-                  <div style="border: 2px solid red; padding: 10px; border-radius: 5px; margin-top: 10px; background-color: #ffe6e6;">
-
-      <group>
-      <h1>Documento anulado</h1>
-      <field name="cancellation_reason" string="Motivo da Anulação" readonly="1" invisible="toc_status != 'cancelled'"/>
-      <field name="cancellation_date" string="Data da Anulação" readonly="1" invisible="toc_status != 'cancelled'"/>
-    </group>
-        </div>
+          name="open_cancel_invoice_wizard"
+          type="object"
+          string="Cancel TOConline Invoice"
+          class="btn btn-outline-danger"
+          style="font-weight: bold; background-color: #f8d7da; border-color: #f5c2c7; color: #842029;"
+          invisible="state != 'posted' or toc_status != 'sent'" />
       </xpath>
 
       <xpath expr="//group//div[@class='d-flex']" position="after">
@@ -52,6 +44,20 @@
           <field name="checkbox" class="my-green-checkbox" readonly="toc_status == 'sent' or toc_status == 'cancelled'" invisible="state != 'posted'"/>
         </div>
       </xpath>
+
+      <xpath expr="//field[@name='partner_id']" position="after">
+  <div style="padding: 6px 12px; border-left: 4px solid #d9534f; background-color: #f9d6d5; border-radius: 3px; font-size: 14px; margin-top: 10px; max-width: 250px;" invisible="toc_status != 'cancelled'">
+    <strong style="color: #a94442;">Canceled Document</strong><br/>
+
+    <label for="cancellation_reason" style="font-weight: bold; color: #a94442;">Motivo:</label><br/>
+    <field name="cancellation_reason" readonly="1" invisible="toc_status != 'cancelled'" options="{'no_open': True}"/><br/>
+
+    <label for="cancellation_date" style="font-weight: bold; color: #a94442;">Data:</label><br/>
+    <field name="cancellation_date" readonly="1" invisible="toc_status != 'cancelled'" options="{'no_open': True}"/>
+  </div>
+</xpath>
+
+
     </field>
   </record>
 </odoo>

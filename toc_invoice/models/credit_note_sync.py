@@ -14,7 +14,7 @@ class CreditNoteSync(models.Model):
     @api.model
     def sync_credit_notes_from_toc(self):
         """Searches NCs from TOConline, shows those that do not exist in Odoo and creates them."""
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             raise UserError("TOConline access token not found.")
 
@@ -127,7 +127,7 @@ class CreditNoteSync(models.Model):
 
     def _get_toc_document_by_id(self, toc_document_id):
         """Retrieves TOConline credit document based on ID"""
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
         headers = {
             "Content-Type": "application/json",

@@ -148,7 +148,7 @@ class CreditNoteWizard(models.TransientModel):
         if not self.invoice_id.toc_status_credit_note:
             raise UserError("A credit note has already been created for this invoice.")
 
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             raise UserError("TOConline access token not found.")
 

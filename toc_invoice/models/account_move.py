@@ -439,6 +439,7 @@ class AccountMove(models.Model):
                 if tax_percentage == 0 and not global_exemption_reason:
                     if record.l10npt_vat_exempt_reason:
                         global_exemption_reason = record.l10npt_vat_exempt_reason.id
+
                     else:
                         raise UserError("The VAT rate is 0%, but no exemption reason was given.")
 
@@ -462,6 +463,7 @@ class AccountMove(models.Model):
             company_currency = self.company_id.currency_id
             date = self.invoice_date or fields.Date.today()
             conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, self.company_id, date)
+
 
             payload = {
                 "document_type": "FT",

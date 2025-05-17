@@ -9,7 +9,7 @@
                     string="Send Credit Note"
                     type="object"
                     class="oe_highlight"
-                    invisible="state != 'posted' or toc_status != 'sent' or toc_status_credit_note == 'sent' or toc_status != 'cancelled'"/>
+                    invisible="state != 'posted' or toc_status != 'sent' or toc_status_credit_note == 'sent' or toc_status == 'cancelled'"/>
             </xpath>
         </field>
     </record>
