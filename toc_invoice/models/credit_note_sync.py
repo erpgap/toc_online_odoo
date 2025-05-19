@@ -87,6 +87,8 @@ class CreditNoteSync(models.Model):
             raise UserError(f"credit note {document_no} has no reference to the original invoice.")
 
         invoice_id = self.env['account.move'].search([('toc_document_no', '=', parent_doc_no)], limit=1)
+
+        print("este é o meu invoice id" , invoice_id)
         if not invoice_id:
             raise UserError(f"Original invoice with TOC no.{parent_doc_no}not found.")
 
@@ -98,6 +100,7 @@ class CreditNoteSync(models.Model):
             lambda t: not (t.amount == 0 and t.company_id != company_id)
         )
 
+        print("estes ão valida+++++++++++++++0" , valid_taxes)
         print("estas são as minhas taxas " , valid_taxes)
         credit_note_vals = {
             'move_type': 'out_refund',
@@ -111,7 +114,7 @@ class CreditNoteSync(models.Model):
                 'tax_ids': [(6, 0, valid_taxes.ids)],
             })],
             'toc_document_no_credit_note': document_no,
-            'company_id': company_id.id,
+            'company_id': 2,
             'toc_status': 'sent',
             'toc_status_credit_note' : 'sent'
 

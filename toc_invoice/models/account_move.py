@@ -515,8 +515,7 @@ class AccountMove(models.Model):
 
     def action_cancel_invoice_toconline(self):
         """
-        Cancels the invoice in TOConline by setting its status to 4 (voided).
-        Requires the user to input a reason.
+        Cancels the invoice in TOConline by setting its status to 4 (voided).Requires the user to input a reason.
         """
         for record in self:
             if not record.toc_document_id:
@@ -543,7 +542,6 @@ class AccountMove(models.Model):
                     }
                 }
             }
-
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {access_token}"
@@ -559,11 +557,7 @@ class AccountMove(models.Model):
                     f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}"
                 )
 
-
-            print("estou aquiiiiiiiiiiiiiiiiiii1111")
             response_data = response.json()
-
-            print("estou aquiiiiiiiiiiiiiiiiiii111122222222222222222")
 
             attributes = response_data.get('data', {}).get('attributes', {})
             reason = attributes.get('voided_reason', '')
