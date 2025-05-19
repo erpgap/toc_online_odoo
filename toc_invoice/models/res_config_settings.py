@@ -1,4 +1,4 @@
-from odoo import models, fields, _
+from odoo import models, fields, api, _
 import requests
 from datetime import timedelta
 from odoo.addons.toc_invoice.utils import token_url
@@ -17,8 +17,15 @@ class ResConfigSettings(models.TransientModel):
         readonly=False
     )
 
+    @api.onchange('toc_online_client_id', 'toc_online_client_secret')
+    def _onchange_clear_tokens_if_missing_credentials(self):
+        if not self.toc_online_client_id or not self.toc_online_client_secret:
+            config = self.env['ir.config_parameter'].sudo()
+            config.set_param('toc_online.access_token', '')
+            config.set_param('toc_online.refresh_token', '')
+            config.set_param('toc_online.token_expiry', '')
+
     def exchange_authorization_code_and_save_tokens(self):
-        """Exchange the authorization code for tokens and save them in the system."""
         company = self.env.company
 
         client_id = company.toc_online_client_id

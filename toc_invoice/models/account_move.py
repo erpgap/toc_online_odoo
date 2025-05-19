@@ -427,6 +427,8 @@ class AccountMove(models.Model):
             for line in record.invoice_line_ids:
                 product_id = self.get_or_create_product_in_toconline(access_token, line.product_id)
                 tax_percentage = line.tax_ids[0].amount if line.tax_ids else 0
+
+                print("esta é a taxa : ---------------------------",tax_percentage)
                 tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
                 tax_code = tax_info["code"]
                 tax_percentage_toc = tax_info["percentage"]

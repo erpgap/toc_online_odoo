@@ -74,12 +74,7 @@ class InvoiceSync(models.Model):
         document_no = toc_document_data.get('document_no')
         status = toc_document_data.get('status')
         tax_reason = toc_document_data.get('tax_exemption_reason_id')
-        tax_id = toc_document_data.get('tax_id')
-        codeP = toc_document_data.get('item_code')
 
-
-
-        # Validar linhas da fatura
         lines = toc_document_data.get('lines', [])
         if not lines:
             raise UserError(f"Fatura {document_no} não contém linhas.")
@@ -88,17 +83,13 @@ class InvoiceSync(models.Model):
         quantity = line.get("quantity")
         unit_price = line.get("unit_price")
         tax_percentage = line.get("tax_percentage")
+        codeP = line.get("item_code")
 
-        print("Status da fatura: ----------------------------------------", status)
-        print("Quantidade: ---------------------------------------------", quantity)
-        print("Preço unitário: ------------------------------------------", unit_price)
-        print("Taxa IVA (%): -------------------------------------------", tax_percentage)
-        print("tax_reason: -------------------------------------------", tax_reason)
-        print("tax_reason: -------------------------------------------", tax_id)
-
-        print("o codigo é este ----------------------------------------" , codeP)
-
-
+        print("Status da fatura:", status)
+        print("Quantidade:", quantity)
+        print("Preço unitário:", unit_price)
+        print("Taxa IVA (%):", tax_percentage)
+        print("Motivo isenção:", tax_reason)
 
         toc_document = self._get_toc_document_by_id(toc_document_id)
         if not toc_document:
@@ -109,9 +100,9 @@ class InvoiceSync(models.Model):
         if not partner:
             raise UserError(f"Cliente com TOConline ID {toc_client_id} não encontrado no Odoo.")
 
-        product = self.env['product.product'].search([], limit=1)
+        product = self.env['product.product'].search([('default_code', '=', codeP)], limit=1)
         if not product:
-            raise UserError("Nenhum produto encontrado para criar a linha da fatura.")
+            raise UserError(f"Produto com código {codeP} não encontrado no Odoo.")
 
         toc_company_id = toc_document.get('company_id')
         company = self.env['res.company'].search([('toc_company_id', '=', toc_company_id)], limit=1)
@@ -123,36 +114,45 @@ class InvoiceSync(models.Model):
 
         journal = self.env['account.journal'].search([
             ('type', '=', 'sale'),
-            ('company_id', '=', company.id)
+            ('company_id', '=', 2)
         ], limit=1)
         if not journal:
             raise UserError(f"Nenhum diário de vendas encontrado para a empresa {company.name}.")
 
-        tax = None
-        if tax_percentage is not None:
-            tax = self.env['account.tax'].search([
-                ('amount', '=', tax_percentage),
-                ('type_tax_use', '=', 'sale'),
-                ('company_id', '=', company.id)
-            ], limit=1)
+        # Corrigir busca de imposto
+        country = company.country_id
+        tax_percentage_float = float(tax_percentage)
 
-        teste = tax.id
-        print("este é o teste .", tax_id)
-        tax_ids_for_line = [(6, 0, [tax_id])] if tax else []
-        print("o problem está aqui : -----------------" ,tax_ids_for_line)
+        tax = self.env['account.tax'].search([
+            ('amount', '>=', tax_percentage_float - 0.01),
+            ('amount', '<=', tax_percentage_float + 0.01),
+            ('type_tax_use', '=', 'sale'),
+            ('company_id', '=',2),  # em vez de fixar como 2
+            '|',
+            ('country_id', '=', False),
+            ('country_id', '=', company.country_id.id)
+        ], limit=1)
+
+        if not tax:
+            if not tax_reason:
+                raise UserError(
+                    f"A fatura {document_no} tem taxa de IVA 0% mas nenhum motivo de isenção foi fornecido."
+                )
+            _logger.warning(f"Nenhum imposto encontrado com {tax_percentage}%. A linha será criada sem imposto.")
+            tax_ids_for_line = []
+        else:
+            tax_ids_for_line = [(6, 0, [tax.id])]
+
         invoice_line_vals = {
-            #'product_id': product.id,
-            #'name': f"Fatura TOC {document_no}",
-            'default_code' : codeP,
+            'product_id': product.id,
             'name': toc_document_data.get('description'),
             'quantity': quantity,
             'price_unit': unit_price,
-            'tax_ids': tax_ids_for_line,
+            'tax_ids':  line.get("tax_id"),
+
         }
 
-        if not tax:
-            _logger.warning(f"Nenhum imposto encontrado com {tax_percentage}%. A linha será criada sem imposto.")
-
+        print("--------------------",toc_document_data.get('tax_exemption_reason_id'))
         toc_status_finalized = None
         if status == 1:
             toc_status_finalized = 'sent'
@@ -165,10 +165,11 @@ class InvoiceSync(models.Model):
             'invoice_date': toc_document_data.get('date'),
             'invoice_date_due': toc_document_data.get('due_date'),
             'company_id': 2,
-            #'l10npt_vat_exempt_reason': tax_reason,
+            'l10npt_vat_exempt_reason':  toc_document_data.get('tax_exemption_reason_id'),
             'invoice_line_ids': [(0, 0, invoice_line_vals)],
             'toc_document_no': document_no,
-            'toc_status': toc_status_finalized
+            'toc_status': toc_status_finalized,
+            'toc_document_id': toc_document_id
         }
 
         print("Dados da fatura a ser criada:", invoice_vals)
