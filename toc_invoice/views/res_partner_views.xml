@@ -6,10 +6,8 @@
         <field name="model">res.partner</field>
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='vat']" position="after">
-                <group>
-                <field name="toc_online_id" />
-                </group>
+            <xpath expr="//field[@name='function']" position="before">
+                <field name="toc_online_id" invisible="not toc_online_id" groups="base.group_system"/>
             </xpath>
         </field>
     </record>

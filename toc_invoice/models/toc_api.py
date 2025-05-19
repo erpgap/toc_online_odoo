@@ -38,13 +38,9 @@ class TocAPI(models.AbstractModel):
             "Content-Type": "application/json"
         }
 
-        print("estes são os parametros enviados",params)
         response = requests.get(url_aux, params=params, headers=headers, allow_redirects=False)
-
-        print("esta é a resposta" , response)
         if response.status_code == 302:
             redirect_url = response.headers.get('Location')
-            print("isto é o teoricamente retorna ", redirect_url)
             if redirect_url:
                 return redirect_url
             else:

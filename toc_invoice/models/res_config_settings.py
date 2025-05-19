@@ -1,4 +1,4 @@
-from odoo import models, fields
+from odoo import models, fields, _
 import requests
 from datetime import timedelta
 
@@ -14,22 +14,6 @@ class ResConfigSettings(models.TransientModel):
         string="TOConline Client Secret",
         config_parameter='toc_online.client_secret'
     )
-    toc_online_access_token = fields.Char(
-        string="TOConline Access Token",
-        config_parameter='toc_online.access_token'
-    )
-    toc_online_refresh_token = fields.Char(
-        string="TOConline Refresh Token",
-        config_parameter='toc_online.refresh_token'
-    )
-    toc_online_authorization_code = fields.Char(
-        string="TOConline Authorization Code",
-        config_parameter='toc_online.authorization_code'
-    )
-    toc_online_token_expiry = fields.Datetime(
-        string="TOConline Token Expiry Date",
-        config_parameter='toc_online.token_expiry'
-    )
 
     def get_values(self):
         res = super(ResConfigSettings, self).get_values()
@@ -37,37 +21,29 @@ class ResConfigSettings(models.TransientModel):
 
         res.update({
             'toc_online_client_id': params.get_param('toc_online.client_id', default=''),
-            'toc_online_client_secret': params.get_param('toc_online.client_secret', default=''),
-            'toc_online_access_token': params.get_param('toc_online.access_token', default=''),
-            'toc_online_refresh_token': params.get_param('toc_online.refresh_token', default=''),
-            'toc_online_authorization_code': params.get_param('toc_online.authorization_code', default=''),
-            'toc_online_token_expiry': params.get_param('toc_online.token_expiry', default=''),
-
+            'toc_online_client_secret': params.get_param('toc_online.client_secret', default='')
         })
         return res
 
     def set_values(self):
         super(ResConfigSettings, self).set_values()
         params = self.env['ir.config_parameter'].sudo()
-
         params.set_param('toc_online.client_id', self.toc_online_client_id)
         params.set_param('toc_online.client_secret', self.toc_online_client_secret)
-        params.set_param('toc_online.access_token', self.toc_online_access_token)
-        params.set_param('toc_online.refresh_token', self.toc_online_refresh_token)
-        params.set_param('toc_online.authorization_code', self.toc_online_authorization_code)
-        params.set_param('toc_online.token_expiry', self.toc_online_token_expiry)
 
     def exchange_authorization_code_and_save_tokens(self):
         """Troca o authorization code por tokens e guarda-os no sistema."""
         params = self.env['ir.config_parameter'].sudo()
 
+        #TODO: settings should be related with the company
+
         client_id = params.get_param('toc_online.client_id')
         client_secret = params.get_param('toc_online.client_secret')
         authorization_code = params.get_param('toc_online.authorization_code')
-        redirect_uri = "https://TUA_URL_DO_ODDO.com"  # Muda isto conforme teu setup
+        redirect_uri = params.get_param('web.base.url')
 
         if not authorization_code:
-            raise ValueError("Authorization Code em falta. Por favor, preencha-o nas configurações.")
+            raise ValueError(_("Missing Authorization Code."))
 
         url = "https://api.toctoc.com/oauth/token"
         data = {
@@ -80,7 +56,7 @@ class ResConfigSettings(models.TransientModel):
 
         response = requests.post(url, data=data)
         if response.status_code != 200:
-            raise ValueError(f"Erro ao trocar authorization code: {response.text}")
+            raise ValueError(_(f"Error while changing the authorization code: {response.text}"))
 
         tokens = response.json()
 

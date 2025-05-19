@@ -1,53 +1,36 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-   <data>
-      <record id="res_config_settings_view_form_toc_online" model="ir.ui.view">
-         <field name="name">res.config.settings.view.form.toc_online</field>
-         <field name="model">res.config.settings</field>
-         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
-         <field name="priority" eval="50"/>
-         <field name="arch" type="xml">
-            <xpath expr="//app[@name='account']" position="inside">
-               <block title="TOConline Configuration" id="toc_online_settings" groups="account.group_account_manager">
-                  <div class="row mt16">
-                     <div class="col-6">
-                        <setting string="TOConline Client ID">
-                           <field name="toc_online_client_id"
-                               string="TOConline Client ID"
-                               config_parameter="toc_online.client_id"/>
-                        </setting>
+    <data>
+        <record id="res_config_settings_view_form_toc_online" model="ir.ui.view">
+            <field name="name">res.config.settings.view.form.toc_online</field>
+            <field name="model">res.config.settings</field>
+            <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+            <field name="priority" eval="50"/>
+            <field name="arch" type="xml">
+                <xpath expr="//app[@name='account']" position="inside">
+                    <block title="TOConline Configuration" id="toc_online_settings"
+                           groups="account.group_account_manager">
+                        <div class="row mt16">
+                            <div class="col-6">
+                                <setting string="TOConline Client ID">
+                                    <field name="toc_online_client_id"
+                                           string="TOConline Client ID"
+                                           config_parameter="toc_online.client_id"/>
+                                </setting>
 
-                     </div>
-                     <div class="col-6">
-                        <setting string="TOConline Client Secret">
-                           <field name="toc_online_client_secret"
-                               string="TOConline Client Secret"
-                               config_parameter="toc_online.client_secret"/>
-                        </setting>
+                            </div>
+                            <div class="col-6">
+                                <setting string="TOConline Client Secret">
+                                    <field name="toc_online_client_secret"
+                                           string="TOConline Client Secret"
+                                           config_parameter="toc_online.client_secret"/>
+                                </setting>
 
-                     </div>
-                  </div>
-                  <div class="row mt16">
-                     <div class="col-6">
-                        <h1>Access Token</h1>
-                        <field name="toc_online_access_token"
-                               string="Access Token"
-                               readonly="1"
-                               config_parameter="toc_online.access_token"/>
-                     </div>
-                     <div class="col-6">
-                        <field name="toc_online_refresh_token"
-                               string="Refresh Token"
-                               readonly="1"
-                               config_parameter="toc_online.refresh_token"/>
-                     </div>
-                  </div>
-
-
-
-               </block>
-            </xpath>
-         </field>
-      </record>
-   </data>
+                            </div>
+                        </div>
+                    </block>
+                </xpath>
+            </field>
+        </record>
+    </data>
 </odoo>
