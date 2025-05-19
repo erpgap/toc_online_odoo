@@ -47,13 +47,13 @@ class AccountPaymentRegister(models.TransientModel):
 
             access_token = self.env['toc.api'].get_access_token()
             if not access_token:
-                raise UserError("TOConline access token not found")
+                raise UserError(_("TOConline access token not found"))
 
             if not wizard.partner_id:
-                raise UserError("Payment must have an associated partner")
+                raise UserError(_("Payment must have an associated partner"))
 
             if not wizard.amount:
-                raise UserError("Payment amount cannot be 0")
+                raise UserError(_("Payment amount cannot be 0"))
 
             partner = wizard.partner_id
             company = wizard.company_id

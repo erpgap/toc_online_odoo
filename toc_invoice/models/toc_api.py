@@ -1,6 +1,5 @@
 import requests
-from gevent.resolver.cares import Result
-from odoo import models, fields
+from odoo import models, fields, _
 import base64
 from urllib.parse import urlparse, parse_qs
 
@@ -65,8 +64,6 @@ class TocAPI(models.AbstractModel):
         client_id1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
         client_secret1 = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_secret')
 
-        print("cliente id :" , client_id1)
-        print("segredo de cliente :" , client_secret1)
         client_credentials = f"{client_id1}:{client_secret1}"
         base64_credentials = base64.b64encode(client_credentials.encode("utf-8")).decode("utf-8")
 
@@ -81,11 +78,6 @@ class TocAPI(models.AbstractModel):
         }
 
         try:
-            print("POST para:", token_url)
-            print("Headers:", headers)
-            print("Payload que vai ser enviado:")
-            print(payload)
-
             response = requests.post(token_url, data=payload, headers=headers)
 
             if response.status_code == 200:
@@ -93,16 +85,13 @@ class TocAPI(models.AbstractModel):
                 access_token = tokens.get("access_token")
                 refresh_token = tokens.get("refresh_token")
 
-                print("o token" , access_token)
-                print("o refresh" , refresh_token)
                 expires_in = tokens.get("expires_in", 3600)
                 expiry_datetime = datetime.now() + timedelta(seconds=expires_in)
 
-                # Verifique se o refresh_token está presente
                 if refresh_token:
                     self.env['ir.config_parameter'].sudo().set_param('toc_online.refresh_token', refresh_token)
                 else:
-                    raise UserError("Erro: Refresh token não encontrado na resposta da TOConline.")
+                    raise UserError(_("Error: Refresh token not found in TOConline response."))
 
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', access_token)
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.token_expiry',
@@ -112,15 +101,15 @@ class TocAPI(models.AbstractModel):
 
                 return {"access_token": access_token, "refresh_token": refresh_token}
             else:
-                raise UserError(f"Erro ao obter tokens: {response.text}")
+                raise UserError(_(f"error getting tokens: {response.text}"))
         except Exception as e:
-            raise UserError(f"Erro na comunicação com TOConline: {str(e)}")
+            raise UserError(_(f"Error on comunication with TOCOnline: {str(e)}"))
 
     def get_access_token(self):
         """
-        Retorna o access_token se estiver válido.
-        Caso contrário, tenta renovar com o refresh_token.
-        Se não for possível, solicita nova autenticação.
+        Returns the access_token if it is valid.
+        Otherwise, it tries to renew it with the refresh_token.
+        If this is not possible, it requests new authentication.
         """
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
         token_expiry = self.env['ir.config_parameter'].sudo().get_param('toc_online.token_expiry')
@@ -133,31 +122,29 @@ class TocAPI(models.AbstractModel):
         print("Expiração do Token:", token_expiry)
 
         if not access_token or self.is_token_expired():
-            print("Token ausente ou expirado. Tentando renovar com refresh_token...")
+            print("Token missing or expired. Trying to renew with refresh_token...")
 
             try:
                 access_token = self.refresh_access_token()
             except UserError as refresh_error:
-                print("Falha ao renovar com refresh_token:", refresh_error)
+                print("Failed to renew with refresh_token:", refresh_error)
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.token_expiry', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.refresh_token', '')
 
                 redirect_auth_url = self.get_authorization_url()
-                print("URL de redirecionamento gerada:", redirect_auth_url)
 
                 code = self._extract_authorization_code_from_url(redirect_auth_url)
-                print("Código de autorização extraído:", code)
 
                 if not code:
-                    raise UserError(
-                        f"Não foi possível extrair o código da URL. A autenticação automática falhou. Acesse: {redirect_auth_url}")
+                    raise UserError(_(
+                            f"Unable to extract code from URL"))
 
                 tokens = self._get_tokens(code)
                 access_token = tokens.get("access_token")
 
                 if not access_token:
-                    raise UserError("Falha ao obter access_token com o código de autorização.")
+                    raise UserError(_("Failed to get access_token with authorization code."))
 
         return access_token
 
@@ -182,7 +169,7 @@ class TocAPI(models.AbstractModel):
             return {"error": tokens.get("error")}
 
     def is_token_expired(self):
-        """ Verifica se o token está expirado. """
+        """ Checks if the token is expired. """
         token_expiry = self.env['ir.config_parameter'].sudo().get_param('toc_online.token_expiry')
         if not token_expiry:
             return True
@@ -197,18 +184,15 @@ class TocAPI(models.AbstractModel):
 
     def refresh_access_token(self):
         """
-        Renova o access_token usando o refresh_token guardado.
-        Se não for possível (ex: refresh expirado), solicita nova autenticação manual ao usuário.
+       Renews the access_token using the saved refresh_token.
+       If this is not possible (e.g., refresh expired), it requests manual authentication from the user again.
         """
         refresh_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.refresh_token')
-        print("Refresh token atual:", refresh_token)
 
-        expi = self.env['ir.config_parameter'].sudo().get_param('toc_online.token_expiry')
-        print("Este é o tempo de expiração:", expi)
 
         if not refresh_token:
             raise UserError(
-                "Refresh token não encontrado. Por favor, autentique-se novamente através do botão de login TOConline."
+                _("Refresh token not found. Please authenticate again via TOConline login button.")
             )
 
         client_id = self.env['ir.config_parameter'].sudo().get_param('toc_online.client_id')
@@ -228,12 +212,9 @@ class TocAPI(models.AbstractModel):
             "Authorization": f"Basic {base64_credentials}"
         }
 
-        print("Payload para renovação:", payload)
-        print("Headers:", headers)
 
         try:
             response = requests.post(token_url, data=payload, headers=headers)
-            print("Resposta do servidor:", response)
 
             if response.status_code == 200:
                 tokens = response.json()
@@ -242,23 +223,21 @@ class TocAPI(models.AbstractModel):
                 expires_in = tokens.get("expires_in", 3600)
                 expiry_datetime = datetime.now() + timedelta(seconds=expires_in)
 
-                # Salva o novo access_token
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', access_token)
                 self.env['ir.config_parameter'].sudo().set_param(
                     'toc_online.token_expiry', expiry_datetime.strftime("%Y-%m-%d %H:%M:%S"))
 
                 if refresh_token_response:
                     self.env['ir.config_parameter'].sudo().set_param('toc_online.refresh_token', refresh_token_response)
-                    print("Novo refresh_token salvo:", refresh_token_response)
+                    print("New refresh_token saved:", refresh_token_response)
                 else:
-                    print("Aviso: Novo refresh_token não retornado. Mantendo o anterior.")
+                    print("Warning: New refresh_token not returned. Keeping the previous one.")
 
-                print("Novo access_token:", access_token)
+                print("New access_token:", access_token)
                 return access_token
 
             elif response.status_code == 401:
-                # Token inválido ou expirado: solicitar nova autorização manual
-                print("Erro 401: O refresh_token expirou ou é inválido.")
+                print("Error 401: The refresh_token is expired or invalid.")
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.refresh_token', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.access_token', '')
                 self.env['ir.config_parameter'].sudo().set_param('toc_online.token_expiry', '')
@@ -268,14 +247,14 @@ class TocAPI(models.AbstractModel):
                     raise UserError(auth_url["error"])
 
                 raise UserError(
-                    f"O acesso à TOConline expirou. Por favor, clique no link abaixo para se autenticar novamente:\n\n{auth_url}"
+                    _(f"Access to TOConline has expired. Please click the link below to re-authenticate.:\n\n{auth_url}")
                 )
 
             else:
-                raise UserError(f"Erro ao renovar access_token: {response.text}")
+                raise UserError(f"Error renewing access_token: {response.text}")
 
         except Exception as e:
-            raise UserError(f"Erro na comunicação com TOConline: {str(e)}")
+            raise UserError(f"Error communicating with TOConline: {str(e)}")
 
 
 
