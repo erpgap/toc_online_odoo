@@ -1,4 +1,4 @@
-from odoo import models, api, fields
+from odoo import models, api, fields, _
 from datetime import datetime, date
 from odoo.exceptions import UserError
 import logging
@@ -25,16 +25,15 @@ class CreditNoteSync(models.Model):
         }
 
         try:
-            _logger.info("Request to TOConline:%s", url)
             response = requests.get(url, headers=headers, timeout=30)
 
             if response.status_code != 200:
-                raise UserError(f"Error communicating with TOConline: {response.status_code} - {response.text}")
+                raise UserError(_(f"Error communicating with TOConline: {response.status_code} - {response.text}"))
 
             documents = response.json()
 
             if not isinstance(documents, list):
-                raise UserError("Unexpected TOConline response format.")
+                raise UserError(_("Unexpected TOConline response format."))
 
 
             toc_nc_docs = [
@@ -61,7 +60,7 @@ class CreditNoteSync(models.Model):
 
         except Exception as e:
             _logger.error("Error during NC fetch: %s", str(e), exc_info=True)
-            raise UserError(f"Erro: {str(e)}")
+            raise UserError(_(f"Erro: {str(e)}"))
 
     def create_credit_note_in_odoo(self, toc_document_data):
         """Creates the credit note in Odoo based on the complete data from TOConline"""
@@ -71,7 +70,7 @@ class CreditNoteSync(models.Model):
         toc_document = self._get_toc_document_by_id(toc_document_id)
 
         if not toc_document:
-            raise UserError(f"Credit document{document_no} not found in TOConline.")
+            raise UserError(_(f"Credit document{document_no} not found in TOConline."))
 
         if isinstance(toc_document, dict):
             toc_client_id = toc_document.get('customer_id')
@@ -80,35 +79,31 @@ class CreditNoteSync(models.Model):
 
         partner_id = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
         if not partner_id:
-            raise UserError(f"Customer with TOConline ID{toc_client_id} not found in Odoo.")
+            raise UserError(_(f"Customer with TOConline ID{toc_client_id} not found in Odoo."))
 
         parent_doc_no = toc_document.get('parent_document_reference')
         if not parent_doc_no:
-            raise UserError(f"credit note {document_no} has no reference to the original invoice.")
+            raise UserError(_(f"credit note {document_no} has no reference to the original invoice."))
 
         invoice_id = self.env['account.move'].search([('toc_document_no', '=', parent_doc_no)], limit=1)
 
-        print("este é o meu invoice id" , invoice_id)
         if not invoice_id:
-            raise UserError(f"Original invoice with TOC no.{parent_doc_no}not found.")
+            raise UserError(_(f"Original invoice with TOC no.{parent_doc_no}not found."))
 
         company_id = invoice_id.company_id
 
-        print("este é o id da minha empresa" , company_id)
 
         valid_taxes = invoice_id.invoice_line_ids[0].tax_ids.filtered(
             lambda t: not (t.amount == 0 and t.company_id != company_id)
         )
 
-        print("estes ão valida+++++++++++++++0" , valid_taxes)
-        print("estas são as minhas taxas " , valid_taxes)
         credit_note_vals = {
             'move_type': 'out_refund',
             'partner_id': partner_id.id,
             'invoice_date': fields.Date.today(),
             'invoice_line_ids': [(0, 0, {
                 'product_id': invoice_id.invoice_line_ids[0].product_id.id,
-                'name': f"Nota de Crédito para fatura {parent_doc_no}",
+                'name': f"Credit Note for invoice {parent_doc_no}",
                 'quantity': 1.0,
                 'price_unit': invoice_id.invoice_line_ids[0].price_unit,
                 'tax_ids': [(6, 0, valid_taxes.ids)],
@@ -123,7 +118,7 @@ class CreditNoteSync(models.Model):
         credit_note = self.env['account.move'].create(credit_note_vals)
 
         if not credit_note:
-            raise UserError("Error creating credit note in Odoo.")
+            raise UserError(_("Error creating credit note in Odoo."))
 
         _logger.info(f"credit note {document_no} successfully created in Odoo.")
         return credit_note
@@ -142,8 +137,8 @@ class CreditNoteSync(models.Model):
             if response.status_code == 200:
                 return response.json()
             else:
-                _logger.error(f"Error fetching TOConline document ID {toc_document_id}: {response.text}")
+                _logger.error(_(f"Error fetching TOConline document ID {toc_document_id}: {response.text}"))
                 return None
         except Exception as e:
-            _logger.error(f"Error connecting to TOConline to fetch document ID{toc_document_id}: {str(e)}")
+            _logger.error(_(f"Error connecting to TOConline to fetch document ID{toc_document_id}: {str(e)}"))
             return None

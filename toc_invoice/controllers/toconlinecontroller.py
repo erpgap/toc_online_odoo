@@ -1,5 +1,6 @@
-from odoo import http
+from odoo import http, _
 from odoo.http import request
+
 
 class TocOauthController(http.Controller):
 
@@ -9,13 +10,12 @@ class TocOauthController(http.Controller):
         error = kwargs.get('error')
 
         if error:
-            return f"Erro recebido da TOConline: {error}"
+            return f"Error received from TOConline: {error}"
 
         if not code:
-            return "Erro: Código de autorização não recebido."
+            return "Error: Authorization code not received."
 
-        # Troca o code pelo token
         toc_api = request.env['toc.api'].sudo()
         tokens = toc_api._get_tokens(code)
 
-        return "Autenticação bem-sucedida com TOConline. Pode fechar esta janela."
+        return "Successful authentication with TOConline. You can close this window."

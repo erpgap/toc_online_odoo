@@ -1,6 +1,7 @@
 from odoo import models, fields, _
 import requests
 from datetime import timedelta
+from odoo.addons.toc_invoice.utils import token_url
 
 
 class ResConfigSettings(models.TransientModel):
@@ -45,7 +46,7 @@ class ResConfigSettings(models.TransientModel):
         if not authorization_code:
             raise ValueError(_("Missing Authorization Code."))
 
-        url = "https://api.toctoc.com/oauth/token"
+        url = token_url
         data = {
             'grant_type': 'authorization_code',
             'code': authorization_code,

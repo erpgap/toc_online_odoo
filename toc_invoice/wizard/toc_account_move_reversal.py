@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api , _
 from odoo.exceptions import UserError
 import requests
 
@@ -140,17 +140,17 @@ class CreditNoteWizard(models.TransientModel):
         self.ensure_one()
 
         if not self.invoice_id or not self.invoice_id.toc_document_no:
-            raise UserError("The original invoice must have been sent to TOConline.")
+            raise UserError(_("The original invoice must have been sent to TOConline."))
 
         if self.env['account.move'].get_toc_status_credit_note() == 'sent':
-            raise UserError("The credit note has already been sent to TOConline.")
+            raise UserError(_("The credit note has already been sent to TOConline."))
 
         if not self.invoice_id.toc_status_credit_note:
-            raise UserError("A credit note has already been created for this invoice.")
+            raise UserError(_("A credit note has already been created for this invoice."))
 
         access_token = self.env['toc.api'].get_access_token()
         if not access_token:
-            raise UserError("TOConline access token not found.")
+            raise UserError(_("TOConline access token not found."))
 
         url_base = self.invoice_id.get_base_url()
         invoice_toc_document_no = self.invoice_id.toc_document_no
@@ -177,7 +177,7 @@ class CreditNoteWizard(models.TransientModel):
             if self.l10npt_vat_exempt_reason:
                 global_exemption_reason = self.l10npt_vat_exempt_reason.id
             else:
-                raise UserError("The VAT rate is 0%, but no exemption reason was given.")
+                raise UserError(_("The VAT rate is 0%, but no exemption reason was given."))
 
         payload = {
             "document_type": "NC",
@@ -234,7 +234,7 @@ class CreditNoteWizard(models.TransientModel):
         if response.status_code == 200:
             self.invoice_id.set_toc_status_credit_note('sent')
         if response.status_code != 200:
-            raise UserError(f"Error sending credit note: {response.text}")
+            raise UserError(_(f"Error sending credit note: {response.text}"))
 
         response_data = response.json()
 
@@ -254,7 +254,7 @@ class CreditNoteWizard(models.TransientModel):
 
             if not tax:
                 raise UserError(
-                    f"Tax with {self.tax_percentage}% not found in the system. Check tax configuration.")
+                    _(f"Tax with {self.tax_percentage}% not found in the system. Check tax configuration."))
 
             line.write({
                 'product_id': self.item_code.id,
@@ -265,7 +265,7 @@ class CreditNoteWizard(models.TransientModel):
             })
 
         if not credit_note:
-            raise UserError("Error creating credit note in Odoo.")
+            raise UserError(_("Error creating credit note in Odoo."))
 
 
         credit_note.write({

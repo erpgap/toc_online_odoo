@@ -147,7 +147,7 @@ class AccountPayment(models.Model):
             print(f"Replaced journal: {journal.name}")
 
         if not journal:
-            raise UserError("No 'bank' or 'cash' type journals available.")
+            raise UserError(_("No 'bank' or 'cash' type journals available."))
 
         payment_method_line = journal.inbound_payment_method_line_ids[:1]
         if not payment_method_line:

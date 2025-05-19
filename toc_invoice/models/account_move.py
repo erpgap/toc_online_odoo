@@ -3,7 +3,6 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 import logging
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-import json
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -100,7 +99,7 @@ class AccountMove(models.Model):
         if portuguese_company:
             return portuguese_company.partner_id.state_id.name
         else:
-            print("No Portuguese companies found")
+            print(_("No Portuguese companies found"))
             return False
 
     def get_document_id_by_number(self, access_token, document_no):
@@ -117,7 +116,7 @@ class AccountMove(models.Model):
         response = requests.get(url, headers=headers)
 
         if response.status_code != 200:
-            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+            raise UserError(_(f"Error retrieving documents from TOConline: {response.text}"))
 
         documents = response.json()
 
@@ -128,7 +127,7 @@ class AccountMove(models.Model):
             if doc.get("document_no") == document_no:
                 return doc.get("id")
 
-        raise UserError(f"Document with number {document_no} not found in TOConline.")
+        raise UserError(_(f"Document with number {document_no} not found in TOConline."))
 
     def get_user_id_by_number_invoice(self, access_token, document_no):
         """
@@ -144,7 +143,7 @@ class AccountMove(models.Model):
         response = requests.get(url, headers=headers)
 
         if response.status_code != 200:
-            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+            raise UserError(_(f"Error retrieving documents from TOConline: {response.text}"))
 
         documents = response.json()
 
@@ -153,10 +152,9 @@ class AccountMove(models.Model):
 
         for doc in documents:
             if doc.get("document_no") == document_no:
-                print("quero ver se este é o id ", doc.get("user_id"))
                 return doc.get("user_id")
 
-        raise UserError(f"Document with number {document_no}not found in TOConline.")
+        raise UserError(_(f"Document with number {document_no}not found in TOConline."))
 
     def get_document_field_by_number(self, access_token, document_no, field):
         """
@@ -178,7 +176,7 @@ class AccountMove(models.Model):
         response = requests.get(url, headers=headers)
 
         if response.status_code != 200:
-            raise UserError(f"Error retrieving documents from TOConline: {response.text}")
+            raise UserError(_(f"Error retrieving documents from TOConline: {response.text}"))
 
         documents = response.json()
 
@@ -189,7 +187,7 @@ class AccountMove(models.Model):
             if doc.get("document_no") == document_no:
                 return doc.get(field)
 
-        raise UserError(f"Document with number {document_no} not found in TOConline.")
+        raise UserError(_(f"Document with number {document_no} not found in TOConline."))
 
     def get_taxes_from_toconline(self, access_token):
         """
@@ -205,7 +203,7 @@ class AccountMove(models.Model):
         if response.status_code == 200:
             return response.json().get('data', [])
         else:
-            raise UserError(f"Error fetching rates from TOConline: {response.text}")
+            raise UserError(_(f"Error fetching rates from TOConline: {response.text}"))
 
     def get_tax_code(self, tax_percentage, tax_region, taxes_data):
         """
@@ -216,7 +214,7 @@ class AccountMove(models.Model):
             if (float(attributes["tax_percentage"]) == tax_percentage and
                     attributes["tax_country_region"] == tax_region):
                 return attributes["tax_code"]
-        raise UserError(f"Tax {tax_percentage}% not found for the region {tax_region}.")
+        raise UserError(_(f"Tax {tax_percentage}% not found for the region {tax_region}."))
 
     def get_tax_info(self, percentage, region, tax_list):
         """
@@ -230,7 +228,7 @@ class AccountMove(models.Model):
                     "percentage": tax_attr["tax_percentage"],
                     "id": tax["id"]
                 }
-        raise UserError(f"No rate was found with {percentage}% for the region {region}.")
+        raise UserError(_(f"No rate was found with {percentage}% for the region {region}."))
 
 
 
@@ -246,14 +244,14 @@ class AccountMove(models.Model):
         currency_obj = self.env['res.currency'].search([('name', '=', invoice_currency)], limit=1)
         euro_currency = self.env['res.currency'].search([('name', '=', 'EUR')], limit=1)
         if not currency_obj or not euro_currency:
-            raise UserError(f"The currency {invoice_currency} or EUR was not found in Odoo.")
+            raise UserError(_(f"The currency {invoice_currency} or EUR was not found in Odoo."))
 
         if self.state == "posted":
             if self.invoice_currency_rate:
                 return self.invoice_currency_rate
             else:
-                raise UserError(
-                        f"No exchange rates found for {invoice_currency}. Check settings."
+                raise UserError(_(
+                        f"No exchange rates found for {invoice_currency}. Check settings.")
                 )
 
         date = self.invoice_date or fields.Date.today()
@@ -269,7 +267,7 @@ class AccountMove(models.Model):
         """
 
         if partner.toc_online_id:
-            print(f"Client already has an ID in TOConline: {partner.toc_online_id}")
+            print(_(f"Client already has an ID in TOConline: {partner.toc_online_id}"))
             return partner.toc_online_id
 
         headers = {
@@ -283,12 +281,11 @@ class AccountMove(models.Model):
 
         if tax_number != "Desconhecido" and tax_number.isdigit() and len(tax_number) == 9:
             search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
-            print(search_url)
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    print(f"Customer found via NIF: {customers[0]['attributes']['business_name']}")
+                    print(_(f"Customer found via NIF: {customers[0]['attributes']['business_name']}"))
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
@@ -336,12 +333,12 @@ class AccountMove(models.Model):
                 raise UserError(
                     _(" The client already exists in TOConline, but it was not possible to link it automatically."))
             else:
-                raise UserError(_("❌ Error creating client in TOConline: %s") % error_msg)
+                raise UserError(_(" Error creating client in TOConline: %s") % error_msg)
 
     def get_or_create_product_in_toconline(self, access_token, product):
 
         if not product.default_code:
-            raise UserError("O código do produto (default_code) está vazio.")
+            raise UserError(_("Product code (default_code) is empty."))
 
         headers = {
             "Content-Type": "application/json",
@@ -356,7 +353,7 @@ class AccountMove(models.Model):
                 return products[0]["id"]
 
         if product.list_price is None:
-            raise UserError(f"O preço de venda (list_price) do produto {product.name} está vazio.")
+            raise UserError(_(f"The selling price (list_price) of the product {product.name} is empty."))
         create_url = f"{TOC_BASE_URL}/api/products"
         product_payload = {
             "data": {
@@ -377,10 +374,10 @@ class AccountMove(models.Model):
             data = response.json()
             product_id = data.get("data", {}).get("id")
             if not product_id:
-                raise UserError(f"Produto criado, mas ID não foi retornado: {data}")
+                raise UserError(_(f"Product created, but ID was not returned: {data}"))
             return product_id
         else:
-            raise UserError(_("Erro ao criar produto no TOConline: %s") % response.text)
+            raise UserError(_("Error creating product in TOConline: %s") % response.text)
 
     def action_send_invoice_to_toconline(self):
         """
@@ -389,25 +386,25 @@ class AccountMove(models.Model):
         """
         for record in self:
             if record.toc_status == 'sent':
-                raise UserError("This invoice has already been sent to TOConline.")
+                raise UserError(_("This invoice has already been sent to TOConline."))
             if record.state != 'posted':
-                raise UserError("Only published invoices can be submitted.")
+                raise UserError(_("Only published invoices can be submitted."))
 
             if record.move_type in ('out_refund', 'in_refund'):
                 record.toc_status = 'draft'
             elif record.move_type == 'out_invoice':
                 if record.state != 'posted':
-                    raise UserError("Only published invoices can be submitted.")
+                    raise UserError(_("Only published invoices can be submitted."))
                 record.toc_status = 'draft'
 
             access_token = self.env['toc.api'].get_access_token()
             if not access_token:
-                raise UserError("Could not get or refresh access token.")
+                raise UserError(_("Could not get or refresh access token."))
 
             toc_endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
             partner = record.partner_id
             if not all([partner.name, partner.street, partner.city, partner.country_id, partner.zip]):
-                raise UserError("Customer must have name, address, city, country and postal code filled in.")
+                raise UserError(_("Customer must have name, address, city, country and postal code filled in."))
 
             customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
 
@@ -424,7 +421,6 @@ class AccountMove(models.Model):
                 if tax["attributes"]["tax_country_region"] == tax_region
             ]
 
-            print("estas são as minhas taxas : **************0", filtered_taxes)
             global_exemption_reason = None
             lines = []
 
@@ -441,7 +437,7 @@ class AccountMove(models.Model):
                         global_exemption_reason = record.l10npt_vat_exempt_reason.id
 
                     else:
-                        raise UserError("The VAT rate is 0%, but no exemption reason was given.")
+                        raise UserError(_("The VAT rate is 0%, but no exemption reason was given."))
 
                 lines.append({
                     "item_id": product_id,
@@ -457,7 +453,6 @@ class AccountMove(models.Model):
                     "exemption_reason": None,
                     "tax_id": tax_id
                 })
-            print("Estas são as linhas:", lines)
 
             currency_obj = self.currency_id
             company_currency = self.company_id.currency_id
@@ -496,7 +491,7 @@ class AccountMove(models.Model):
 
         if response.status_code != 200:
             raise UserError(
-                f"Error sending invoice to TOConline. Status Code: {response.status_code}. Response body: {response.text}"
+                _(f"Error sending invoice to TOConline. Status Code: {response.status_code}. Response body: {response.text}")
             )
 
         data = response.json()
@@ -519,18 +514,18 @@ class AccountMove(models.Model):
         """
         for record in self:
             if not record.toc_document_id:
-                raise UserError("This invoice was not sent to TOConline or is missing the TOConline document ID.")
+                raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
 
             if record.toc_status != 'sent':
-                raise UserError("Only invoices already sent to TOConline can be canceled.")
+                raise UserError(_("Only invoices already sent to TOConline can be canceled."))
 
             reason = self.env.context.get('cancel_reason')
             if not reason:
-                raise UserError("You must provide a reason to cancel the invoice.")
+                raise UserError(_("You must provide a reason to cancel the invoice."))
 
             access_token = self.env['toc.api'].get_access_token()
             if not access_token:
-                raise UserError("Could not obtain access token for TOConline.")
+                raise UserError(_("Could not obtain access token for TOConline."))
 
             cancel_payload = {
                 "data": {
@@ -554,7 +549,7 @@ class AccountMove(models.Model):
 
             if response.status_code != 200:
                 raise UserError(
-                    f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}"
+                    _(f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}")
                 )
 
             response_data = response.json()
@@ -563,7 +558,6 @@ class AccountMove(models.Model):
             reason = attributes.get('voided_reason', '')
             date = attributes.get('created_at', '')
 
-            print(f"razão : {reason} e data {date}")
             record.write({
                 'toc_status': 'cancelled',
                 'cancellation_reason' : reason,
@@ -593,7 +587,7 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
         if customers:
-            print(f"Client found on TOConline: {customers[0]['attributes']['business_name']}")
+            print(_(f"Client found on TOConline: {customers[0]['attributes']['business_name']}"))
             return customers[0]["id"]
         return None
 
