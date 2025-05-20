@@ -381,21 +381,20 @@ class AccountMove(models.Model):
 
     def action_send_invoice_to_toconline(self):
         """
-        Sends the invoice data to TOConline.
-        If the token has expired, it tries to renew it before sending.
+        Sends all posted invoices to TOConline that haven't been sent yet.
         """
-        for record in self:
-            if record.toc_status == 'sent':
-                raise UserError(_("This invoice has already been sent to TOConline."))
-            if record.state != 'posted':
-                raise UserError(_("Only published invoices can be submitted."))
+        invoices_to_send = self.env['account.move'].search([
+            ('state', '=', 'posted'),
+            ('toc_status', '!=', 'sent'),
+            ('move_type', '=', 'out_invoice'),
+        ])
 
-            if record.move_type in ('out_refund', 'in_refund'):
-                record.toc_status = 'draft'
-            elif record.move_type == 'out_invoice':
-                if record.state != 'posted':
-                    raise UserError(_("Only published invoices can be submitted."))
-                record.toc_status = 'draft'
+        if not invoices_to_send:
+            raise UserError(_("No invoices to send."))
+
+        for record in invoices_to_send:
+            # Preparação do status
+            record.toc_status = 'draft'
 
             access_token = self.env['toc.api'].get_access_token()
             print("este é o access ", access_token)
@@ -408,10 +407,7 @@ class AccountMove(models.Model):
                 raise UserError(_("Customer must have name, address, city, country and postal code filled in."))
 
             customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
-
             empresa_id = self.env.company.id
-
-            print("este é o id da minha empresa", empresa_id)
 
             state_company = self.getStateCompany()
             region_map = {
@@ -433,7 +429,6 @@ class AccountMove(models.Model):
                 product_id = self.get_or_create_product_in_toconline(access_token, line.product_id)
                 tax_percentage = line.tax_ids[0].amount if line.tax_ids else 0
 
-                print("esta é a taxa : ---------------------------",tax_percentage)
                 tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
                 tax_code = tax_info["code"]
                 tax_percentage_toc = tax_info["percentage"]
@@ -442,7 +437,6 @@ class AccountMove(models.Model):
                 if tax_percentage == 0 and not global_exemption_reason:
                     if record.l10npt_vat_exempt_reason:
                         global_exemption_reason = record.l10npt_vat_exempt_reason.id
-
                     else:
                         raise UserError(_("The VAT rate is 0%, but no exemption reason was given."))
 
@@ -454,18 +448,18 @@ class AccountMove(models.Model):
                     "unit_price": line.price_unit,
                     "tax_code": tax_code,
                     "tax_percentage": tax_percentage_toc,
-
                     "tax_country_region": tax_region,
                     "item_type": "Product",
                     "exemption_reason": None,
                     "tax_id": tax_id
                 })
 
-            currency_obj = self.currency_id
-            company_currency = self.company_id.currency_id
-            date = self.invoice_date or fields.Date.today()
-            conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, self.company_id, date)
+            currency_obj = record.currency_id
+            company_currency = record.company_id.currency_id
+            date = record.invoice_date or fields.Date.today()
+            conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, record.company_id, date)
 
+            print("ytesttttt", record.name)
 
             payload = {
                 "document_type": "FT",
@@ -490,35 +484,35 @@ class AccountMove(models.Model):
                 "tax_exemption_reason_id": global_exemption_reason,
                 "lines": lines,
             }
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
-        response = requests.post(toc_endpoint, json=payload, headers=headers, timeout=120)
 
-        if response.status_code != 200:
-            raise UserError(
-                _(f"Error sending invoice to TOConline. Status Code: {response.status_code}. Response body: {response.text}")
-            )
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
 
-        data = response.json()
-        document_no = data.get('document_no', '')
-        document_id = data.get('id', '')
+            response = requests.post(toc_endpoint, json=payload, headers=headers, timeout=120)
 
-        company_id_from_toconline = data.get('company_id')
+            if response.status_code != 200:
+                raise UserError(
+                    _(f"Error sending invoice {record.name} to TOConline. Status Code: {response.status_code}. Response body: {response.text}")
+                )
 
-        if company_id_from_toconline:
-            self.env.company.toc_company_id = company_id_from_toconline
+            data = response.json()
+            document_no = data.get('document_no', '')
+            document_id = data.get('id', '')
+            company_id_from_toconline = data.get('company_id')
 
-        record.write({
-            'toc_status': 'sent',
-            'toc_invoice_url': data.get('invoice_url', ''),
-            'toc_document_no': document_no,
-            'toc_document_id': document_id
-        })
+            if company_id_from_toconline:
+                self.env.company.toc_company_id = company_id_from_toconline
 
-        self.env.cr.commit()
+            record.write({
+                'toc_status': 'sent',
+                'toc_invoice_url': data.get('invoice_url', ''),
+                'toc_document_no': document_no,
+                'toc_document_id': document_id
+            })
 
+            self.env.cr.commit()
 
     def action_cancel_invoice_toconline(self):
         """
@@ -570,6 +564,7 @@ class AccountMove(models.Model):
             date = attributes.get('created_at', '')
 
             record.write({
+                'status' : 'cancelled',
                 'toc_status': 'cancelled',
                 'cancellation_reason' : reason,
                 'cancellation_date' : date
