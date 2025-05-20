@@ -1,4 +1,4 @@
-from odoo import models, api, fields
+from odoo import models, api, fields, _
 from odoo.exceptions import UserError
 import logging
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
@@ -6,75 +6,68 @@ import requests
 
 _logger = logging.getLogger(__name__)
 
+
 class InvoiceSync(models.Model):
     _name = 'invoice.sync'
     _description = 'Sync Invoices from TOConline'
 
     @api.model
     def sync_invoices_from_toc(self):
-        """Synchronization of invoices existing in TOCOnline and not in odoo"""
+        """Synchronization of invoices existing in TOCOnline and not in Odoo."""
 
-        company = self.env['res.company'].browse(2)
-        self = self.with_company(company).sudo()
+        companies = self.env['res.company'].search([('toc_company_id', '!=', False)])
+        for company in companies:
+            access_token = self.env['toc.api'].get_access_token(company=company)
+            if not access_token:
+                _logger.warning(f"Access token not found for company {company.name}")
+                continue
 
-        empresa_id = self.env.company.id
-        print("Empresa forçada com ID:", empresa_id)
+            url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=FT&sort=-date"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
 
-        access_token = self.env['toc.api'].get_access_token()
-        if not access_token:
-            raise UserError("TOConline access token not found.")
+            try:
+                response = requests.get(url, headers=headers, timeout=30)
+                if response.status_code != 200:
+                    raise UserError(_(f"Error communicating with TOConline: {response.status_code} - {response.text}"))
 
-        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=FT&sort=-date"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
+                documents = response.json()
+                if not isinstance(documents, list):
+                    raise UserError(_("Unexpected format in TOConline response."))
 
-        try:
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code != 200:
-                raise UserError(f"Error communicating with TOConline: {response.status_code} - {response.text}")
+                toc_ft_docs = [
+                    doc for doc in documents
+                    if doc.get("document_type") == "FT" and doc.get("document_no") and doc.get("id")
+                ]
 
-            documents = response.json()
-            if not isinstance(documents, list):
-                raise UserError("Unexpected format in TOConline response.")
+                toc_doc_nos = [doc["document_no"] for doc in toc_ft_docs]
 
-            toc_ft_docs = [
-                doc for doc in documents
-                if doc.get("document_type") == "FT" and doc.get("document_no") and doc.get("id")
-            ]
+                existing_invoices = self.env['account.move'].search([
+                    ('move_type', '=', 'out_invoice'),
+                    ('toc_document_no', 'in', toc_doc_nos),
+                    ('company_id', '=', company.id),
+                ])
+                existing_toc_nos = set(existing_invoices.mapped('toc_document_no'))
 
-            toc_doc_nos = [doc["document_no"] for doc in toc_ft_docs]
+                toc_not_in_odoo = [doc for doc in toc_ft_docs if doc["document_no"] not in existing_toc_nos]
 
-            existing_invoices = self.env['account.move'].search([
-                ('move_type', '=', 'out_invoice'),
-                ('toc_document_no', '!=', False),
-                ('company_id', '=', 2),
-            ])
-            existing_toc_nos = set(existing_invoices.mapped('toc_document_no'))
+                _logger.info("=== Documents already in ODOO (%d) for company %s ===", len(existing_toc_nos),
+                             company.name)
+                _logger.info("=== MISSING DOCUMENTS (%d) for company %s ===", len(toc_not_in_odoo), company.name)
 
-            toc_not_in_odoo = [doc for doc in toc_ft_docs if doc["document_no"] not in existing_toc_nos]
+                for doc in toc_not_in_odoo:
+                    try:
+                        self.create_invoice_in_odoo(doc, company)
+                    except Exception as e:
+                        _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
 
-            print("=== Documents already in ODOO (%d) ===" % len(existing_toc_nos))
-            for doc_no in existing_toc_nos:
-                print("Present in Odoo: %s" % doc_no)
+            except Exception as e:
+                _logger.error("Error during synchronization for company %s: %s", company.name, str(e), exc_info=True)
+                raise UserError(_(f"Error: {str(e)}"))
 
-            print("=== MISSING DOCUMENTS (%d) ===" % len(toc_not_in_odoo))
-            for doc in toc_not_in_odoo:
-                print("Missing in Odoo: %s | customer_id: %s" % (doc["document_no"], doc.get("customer_id")))
-
-            for doc in toc_not_in_odoo:
-                try:
-                    self.create_invoice_in_odoo(doc)
-                except Exception as e:
-                    _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
-
-        except Exception as e:
-            _logger.error("Error during synchronization: %s", str(e), exc_info=True)
-            raise UserError(f"Error: {str(e)}")
-
-    def create_invoice_in_odoo(self, toc_document_data):
-
+    def create_invoice_in_odoo(self, toc_document_data, company):
         toc_document_id = toc_document_data.get('id')
         document_no = toc_document_data.get('document_no')
         status = toc_document_data.get('status')
@@ -90,13 +83,7 @@ class InvoiceSync(models.Model):
         tax_percentage = line.get("tax_percentage")
         codeP = line.get("item_code")
 
-        print("Status da fatura:", status)
-        print("Quantidade:", quantity)
-        print("Preço unitário:", unit_price)
-        print("Taxa IVA (%):", tax_percentage)
-        print("Motivo isenção:", tax_reason)
-
-        toc_document = self._get_toc_document_by_id(toc_document_id)
+        toc_document = self._get_toc_document_by_id(toc_document_id, company)
         if not toc_document:
             raise UserError(f"Fatura {document_no} não encontrada na TOConline.")
 
@@ -105,21 +92,11 @@ class InvoiceSync(models.Model):
         if not partner:
             raise UserError(f"Cliente com TOConline ID {toc_client_id} não encontrado no Odoo.")
 
-        product = self.env['product.product'].search([('default_code', '=', codeP)], limit=1)
-        if not product:
-            raise UserError(f"Produto com código {codeP} não encontrado no Odoo.")
-
-        toc_company_id = toc_document.get('company_id')
-        company = self.env['res.company'].search([('toc_company_id', '=', toc_company_id)], limit=1)
-        if not company:
-            _logger.warning(f"Empresa com TOC ID {toc_company_id} não encontrada. Usando empresa padrão.")
-            company = self.env['res.company'].browse(2)  #
-
-        self = self.with_company(company)
+        self = self.with_company(company).sudo()
 
         journal = self.env['account.journal'].search([
             ('type', '=', 'sale'),
-            ('company_id', '=', 2)
+            ('company_id', '=', company.id)
         ], limit=1)
         if not journal:
             raise UserError(f"Nenhum diário de vendas encontrado para a empresa {company.name}.")
@@ -130,31 +107,58 @@ class InvoiceSync(models.Model):
             ('amount', '>=', tax_percentage_float - 0.01),
             ('amount', '<=', tax_percentage_float + 0.01),
             ('type_tax_use', '=', 'sale'),
-            ('company_id', '=',2),
+            ('company_id', '=', company.id),
             '|',
             ('country_id', '=', False),
             ('country_id', '=', company.country_id.id)
         ], limit=1)
 
+        tax_ids_for_line = []
         if not tax:
-            if not tax_reason:
+            # Obter a região da empresa
+            state_company = company.state_id.name if company.state_id else ""
+            region_map = {
+                "Madeira": "PT-MA",
+                "Açores": "PT-AC",
+                "Continente": "PT"
+            }
+            tax_region = region_map.get(state_company, "PT")
+
+            taxes_data = self.env['account.move'].get_taxes_from_toconline(
+                self.env['toc.api'].get_access_token(company=company))
+            valid_region_taxes = [
+                t for t in taxes_data
+                if t["attributes"]["tax_country_region"] == tax_region
+            ]
+
+            found_valid_tax = any(
+                abs(float(t["attributes"]["tax_percentage"]) - tax_percentage_float) < 0.01
+                for t in valid_region_taxes
+            )
+
+            if not found_valid_tax:
                 raise UserError(
-                    f"A fatura {document_no} tem taxa de IVA 0% mas nenhum motivo de isenção foi fornecido."
+                    f"A fatura {document_no} tem uma taxa de IVA {tax_percentage}% que não é válida para a região {tax_region}."
                 )
-            _logger.warning(f"Nenhum imposto encontrado com {tax_percentage}%. A linha será criada sem imposto.")
-            tax_ids_for_line = []
+
+            if not tax_reason and tax_percentage_float == 0:
+                raise UserError(
+                    f"A fatura {document_no} tem IVA 0% mas nenhum motivo de isenção foi fornecido."
+                )
+
+            _logger.warning(
+                f"Nenhum imposto configurado no Odoo com {tax_percentage}%. Será salvo sem imposto, mas a taxa é válida.")
         else:
             tax_ids_for_line = [(6, 0, [tax.id])]
 
         invoice_line_vals = {
-            'product_id': product.id,
+            'product_id': self.env['product.product'].search([('default_code', '=', codeP)], limit=1).id,
             'name': toc_document_data.get('description'),
             'quantity': quantity,
             'price_unit': unit_price,
             'tax_ids': tax_ids_for_line,
         }
 
-        print("--------------------", toc_document_data.get('tax_exemption_reason_id'))
         toc_status_finalized = None
         if status == 1:
             toc_status_finalized = 'sent'
@@ -166,27 +170,35 @@ class InvoiceSync(models.Model):
             'partner_id': partner.id,
             'invoice_date': toc_document_data.get('date'),
             'invoice_date_due': toc_document_data.get('due_date'),
-            'company_id': 2,
-            'l10npt_vat_exempt_reason': toc_document_data.get('tax_exemption_reason_id'),
+            'company_id': company.id,
+            'journal_id': journal.id,
+            'l10npt_vat_exempt_reason': tax_reason,
             'invoice_line_ids': [(0, 0, invoice_line_vals)],
             'toc_document_no': document_no,
             'toc_status': toc_status_finalized,
             'toc_document_id': toc_document_id
-        }
+        }correction of rates in invoice synchronization
 
-        print("Dados da fatura a ser criada:", invoice_vals)
         invoice = self.env['account.move'].create(invoice_vals)
         invoice.action_post()
+        self.env.cr.commit()
 
+        _logger.info("Invoice vals para %s: %s", document_no, invoice_vals)
+
+        _logger.info(f"Fatura {document_no} criada com sucesso na empresa {company.name}")
         return invoice
 
-    def _get_toc_document_by_id(self, toc_document_id):
-        access_token = self.env['toc.api'].get_access_token()
+    def _get_toc_document_by_id(self, toc_document_id, company):
+        access_token = self.env['toc.api'].get_access_token(company=company)
+        if not access_token:
+            raise UserError(f"TOConline access token not found for company {company.name}.")
+
         url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}"
         }
+
 
         try:
             response = requests.get(url, headers=headers, timeout=30)
