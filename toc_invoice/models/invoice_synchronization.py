@@ -65,11 +65,6 @@ class InvoiceSync(models.Model):
 
             for doc in toc_not_in_odoo:
                 try:
-                    Fixed
-                    synchronization
-                    of
-                    invoices and credit
-                    notes
                     self.create_invoice_in_odoo(doc)
                 except Exception as e:
                     _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
