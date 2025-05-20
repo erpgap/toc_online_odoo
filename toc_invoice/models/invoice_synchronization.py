@@ -177,7 +177,7 @@ class InvoiceSync(models.Model):
             'toc_document_no': document_no,
             'toc_status': toc_status_finalized,
             'toc_document_id': toc_document_id
-        }correction of rates in invoice synchronization
+        }
 
         invoice = self.env['account.move'].create(invoice_vals)
         invoice.action_post()
