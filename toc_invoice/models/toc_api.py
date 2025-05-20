@@ -2,10 +2,10 @@ import requests
 from odoo import models, fields, _
 import base64
 from urllib.parse import urlparse, parse_qs
-
-from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
 from datetime import datetime, timedelta
 from odoo.exceptions import UserError
+
+from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
 
 
 class TocAPI(models.AbstractModel):
@@ -15,8 +15,8 @@ class TocAPI(models.AbstractModel):
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
 
-    def get_authorization_url(self):
-        company = self.env.company.sudo()
+    def get_authorization_url(self, company=None):
+        company = (company or self.env.company).sudo()
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
 
@@ -42,8 +42,8 @@ class TocAPI(models.AbstractModel):
         query_params = parse_qs(parsed_url.query)
         return query_params.get("code", [None])[0]
 
-    def _get_tokens(self, authorization_code):
-        company = self.env.company.sudo()
+    def _get_tokens(self, authorization_code, company=None):
+        company = (company or self.env.company).sudo()
         config = self.env['ir.config_parameter'].sudo()
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
@@ -83,11 +83,10 @@ class TocAPI(models.AbstractModel):
         else:
             raise UserError(_(f"Error getting tokens: {response.text}"))
 
-    def get_access_token(self):
-        company = self.env.company.sudo()
+    def get_access_token(self, company=None):
+        company = (company or self.env.company).sudo()
         config = self.env['ir.config_parameter'].sudo()
 
-        # ✅ Validar client_id/client_secret antes de continuar
         if not company.toc_online_client_id or not company.toc_online_client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured. Cannot proceed with TOConline operation."))
 
@@ -95,30 +94,30 @@ class TocAPI(models.AbstractModel):
 
         if not access_token or self.is_token_expired():
             try:
-                access_token = self.refresh_access_token()
+                access_token = self.refresh_access_token(company=company)
             except UserError:
                 config.set_param('toc_online.access_token', '')
                 config.set_param('toc_online.token_expiry', '')
                 config.set_param('toc_online.refresh_token', '')
 
-                redirect_auth_url = self.get_authorization_url()
+                redirect_auth_url = self.get_authorization_url(company=company)
                 code = self._extract_authorization_code_from_url(redirect_auth_url)
                 if not code:
                     raise UserError(_("Unable to extract code from URL"))
 
-                tokens = self._get_tokens(code)
+                tokens = self._get_tokens(code, company=company)
                 access_token = tokens.get("access_token")
                 if not access_token:
                     raise UserError(_("Failed to get access_token with authorization code."))
 
         return access_token
 
-    def get_refresh_token(self, authorization_code):
-        tokens = self._get_tokens(authorization_code)
+    def get_refresh_token(self, authorization_code, company=None):
+        tokens = self._get_tokens(authorization_code, company=company)
         return tokens.get("refresh_token") or {"error": tokens.get("error")}
 
-    def get_expires_in(self, authorization_code):
-        tokens = self._get_tokens(authorization_code)
+    def get_expires_in(self, authorization_code, company=None):
+        tokens = self._get_tokens(authorization_code, company=company)
         return tokens.get("expires_in") or {"error": tokens.get("error")}
 
     def is_token_expired(self):
@@ -132,10 +131,10 @@ class TocAPI(models.AbstractModel):
         except Exception:
             return True
 
-    def refresh_access_token(self):
+    def refresh_access_token(self, company=None):
         config = self.env['ir.config_parameter'].sudo()
         refresh_token = config.get_param('toc_online.refresh_token')
-        company = self.env.company.sudo()
+        company = (company or self.env.company).sudo()
 
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
@@ -180,7 +179,7 @@ class TocAPI(models.AbstractModel):
             config.set_param('toc_online.access_token', '')
             config.set_param('toc_online.token_expiry', '')
 
-            auth_url_response = self.get_authorization_url()
+            auth_url_response = self.get_authorization_url(company=company)
             if isinstance(auth_url_response, dict) and "error" in auth_url_response:
                 raise UserError(auth_url_response["error"])
 

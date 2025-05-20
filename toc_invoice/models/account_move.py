@@ -398,6 +398,7 @@ class AccountMove(models.Model):
                 record.toc_status = 'draft'
 
             access_token = self.env['toc.api'].get_access_token()
+            print("este é o access ", access_token)
             if not access_token:
                 raise UserError(_("Could not get or refresh access token."))
 
@@ -407,6 +408,10 @@ class AccountMove(models.Model):
                 raise UserError(_("Customer must have name, address, city, country and postal code filled in."))
 
             customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
+
+            empresa_id = self.env.company.id
+
+            print("este é o id da minha empresa", empresa_id)
 
             state_company = self.getStateCompany()
             region_map = {
@@ -500,6 +505,11 @@ class AccountMove(models.Model):
         document_no = data.get('document_no', '')
         document_id = data.get('id', '')
 
+        company_id_from_toconline = data.get('company_id')
+
+        if company_id_from_toconline:
+            self.env.company.toc_company_id = company_id_from_toconline
+
         record.write({
             'toc_status': 'sent',
             'toc_invoice_url': data.get('invoice_url', ''),
@@ -547,7 +557,6 @@ class AccountMove(models.Model):
             url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
             response = requests.patch(url, json=cancel_payload, headers=headers)
 
-            print(f"TOConline response: {response.status_code}, {response.text}")
 
             if response.status_code != 200:
                 raise UserError(

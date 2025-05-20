@@ -16,6 +16,30 @@ class ResConfigSettings(models.TransientModel):
         related='company_id.toc_online_client_secret',
         readonly=False
     )
+    toc_company_id = fields.Char(
+        string="TOConline Company ID",
+        related='company_id.toc_company_id',
+        readonly=True
+    )
+
+    @api.model
+    def get_values(self):
+        res = super().get_values()
+        company = self.env.company
+        res.update({
+            'toc_online_client_id': company.toc_online_client_id,
+            'toc_online_client_secret': company.toc_online_client_secret,
+        })
+        return res
+
+    def set_values(self):
+        super().set_values()
+        company = self.env.company
+        company.write({
+            'toc_online_client_id': self.toc_online_client_id,
+            'toc_online_client_secret': self.toc_online_client_secret,
+        })
+
 
     @api.onchange('toc_online_client_id', 'toc_online_client_secret')
     def _onchange_clear_tokens_if_missing_credentials(self):

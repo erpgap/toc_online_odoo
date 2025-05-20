@@ -13,19 +13,20 @@
                         <div class="row mt16">
                             <div class="col-6">
                                 <setting string="TOConline Client ID">
-                                    <field name="toc_online_client_id"
-                                           string="TOConline Client ID"
-                                           config_parameter="toc_online.client_id"/>
+                                    <field name="toc_online_client_id"/>
                                 </setting>
-
                             </div>
                             <div class="col-6">
                                 <setting string="TOConline Client Secret">
-                                    <field name="toc_online_client_secret"
-                                           string="TOConline Client Secret"
-                                           config_parameter="toc_online.client_secret"/>
+                                    <field name="toc_online_client_secret"/>
                                 </setting>
-
+                            </div>
+                        </div>
+                        <div class="row mt16">
+                            <div class="col-6">
+                                <setting string="TOConline Company ID">
+                                    <field name="toc_company_id" readonly="1" invisible="not toc_company_id" groups="base.group_system"/>
+                                </setting>
                             </div>
                         </div>
                     </block>

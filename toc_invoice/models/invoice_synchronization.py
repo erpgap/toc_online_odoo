@@ -14,6 +14,12 @@ class InvoiceSync(models.Model):
     def sync_invoices_from_toc(self):
         """Synchronization of invoices existing in TOCOnline and not in odoo"""
 
+        company = self.env['res.company'].browse(2)
+        self = self.with_company(company).sudo()
+
+        empresa_id = self.env.company.id
+        print("Empresa forçada com ID:", empresa_id)
+
         access_token = self.env['toc.api'].get_access_token()
         if not access_token:
             raise UserError("TOConline access token not found.")
@@ -42,7 +48,8 @@ class InvoiceSync(models.Model):
 
             existing_invoices = self.env['account.move'].search([
                 ('move_type', '=', 'out_invoice'),
-                ('toc_document_no', '!=', False)
+                ('toc_document_no', '!=', False),
+                ('company_id', '=', 2),
             ])
             existing_toc_nos = set(existing_invoices.mapped('toc_document_no'))
 
@@ -58,9 +65,11 @@ class InvoiceSync(models.Model):
 
             for doc in toc_not_in_odoo:
                 try:
-                    print("print importante --------------------------------------")
-                    print(doc)
-                    print("-------------------------------------------------------")
+                    Fixed
+                    synchronization
+                    of
+                    invoices and credit
+                    notes
                     self.create_invoice_in_odoo(doc)
                 except Exception as e:
                     _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
@@ -70,6 +79,7 @@ class InvoiceSync(models.Model):
             raise UserError(f"Error: {str(e)}")
 
     def create_invoice_in_odoo(self, toc_document_data):
+
         toc_document_id = toc_document_data.get('id')
         document_no = toc_document_data.get('document_no')
         status = toc_document_data.get('status')
@@ -108,7 +118,7 @@ class InvoiceSync(models.Model):
         company = self.env['res.company'].search([('toc_company_id', '=', toc_company_id)], limit=1)
         if not company:
             _logger.warning(f"Empresa com TOC ID {toc_company_id} não encontrada. Usando empresa padrão.")
-            company = self.env.company
+            company = self.env['res.company'].browse(2)  #
 
         self = self.with_company(company)
 
@@ -119,15 +129,13 @@ class InvoiceSync(models.Model):
         if not journal:
             raise UserError(f"Nenhum diário de vendas encontrado para a empresa {company.name}.")
 
-        # Corrigir busca de imposto
-        country = company.country_id
         tax_percentage_float = float(tax_percentage)
 
         tax = self.env['account.tax'].search([
             ('amount', '>=', tax_percentage_float - 0.01),
             ('amount', '<=', tax_percentage_float + 0.01),
             ('type_tax_use', '=', 'sale'),
-            ('company_id', '=',2),  # em vez de fixar como 2
+            ('company_id', '=',2),
             '|',
             ('country_id', '=', False),
             ('country_id', '=', company.country_id.id)
@@ -148,11 +156,10 @@ class InvoiceSync(models.Model):
             'name': toc_document_data.get('description'),
             'quantity': quantity,
             'price_unit': unit_price,
-            'tax_ids':  line.get("tax_id"),
-
+            'tax_ids': tax_ids_for_line,
         }
 
-        print("--------------------",toc_document_data.get('tax_exemption_reason_id'))
+        print("--------------------", toc_document_data.get('tax_exemption_reason_id'))
         toc_status_finalized = None
         if status == 1:
             toc_status_finalized = 'sent'
@@ -165,7 +172,7 @@ class InvoiceSync(models.Model):
             'invoice_date': toc_document_data.get('date'),
             'invoice_date_due': toc_document_data.get('due_date'),
             'company_id': 2,
-            'l10npt_vat_exempt_reason':  toc_document_data.get('tax_exemption_reason_id'),
+            'l10npt_vat_exempt_reason': toc_document_data.get('tax_exemption_reason_id'),
             'invoice_line_ids': [(0, 0, invoice_line_vals)],
             'toc_document_no': document_no,
             'toc_status': toc_status_finalized,
