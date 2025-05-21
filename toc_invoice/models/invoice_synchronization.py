@@ -75,7 +75,7 @@ class InvoiceSync(models.Model):
 
         lines = toc_document_data.get('lines', [])
         if not lines:
-            raise UserError(f"Fatura {document_no} não contém linhas.")
+            raise UserError(f"Invoice {document_no} don't have lines")
 
         line = lines[0]
         quantity = line.get("quantity")
@@ -85,12 +85,12 @@ class InvoiceSync(models.Model):
 
         toc_document = self._get_toc_document_by_id(toc_document_id, company)
         if not toc_document:
-            raise UserError(f"Fatura {document_no} não encontrada na TOConline.")
+            raise UserError(f"Invoice {document_no} not found in TOConline.")
 
         toc_client_id = toc_document.get('customer_id')
         partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
         if not partner:
-            raise UserError(f"Cliente com TOConline ID {toc_client_id} não encontrado no Odoo.")
+            raise UserError(f"Client with toc_id {toc_client_id} not found")
 
         self = self.with_company(company).sudo()
 
@@ -99,7 +99,7 @@ class InvoiceSync(models.Model):
             ('company_id', '=', company.id)
         ], limit=1)
         if not journal:
-            raise UserError(f"Nenhum diário de vendas encontrado para a empresa {company.name}.")
+            raise UserError(f"No sales journals found for the company{company.name}.")
 
         tax_percentage_float = float(tax_percentage)
 
@@ -115,7 +115,6 @@ class InvoiceSync(models.Model):
 
         tax_ids_for_line = []
         if not tax:
-            # Obter a região da empresa
             state_company = company.state_id.name if company.state_id else ""
             region_map = {
                 "Madeira": "PT-MA",
@@ -138,16 +137,16 @@ class InvoiceSync(models.Model):
 
             if not found_valid_tax:
                 raise UserError(
-                    f"A fatura {document_no} tem uma taxa de IVA {tax_percentage}% que não é válida para a região {tax_region}."
+                    f"The invoice {document_no} has a VAT rate {tax_percentage}% which is not valid for the region{tax_region}."
                 )
 
             if not tax_reason and tax_percentage_float == 0:
                 raise UserError(
-                    f"A fatura {document_no} tem IVA 0% mas nenhum motivo de isenção foi fornecido."
+                    f"The invoice {document_no} has 0% VAT but no exemption reason was provided."
                 )
 
             _logger.warning(
-                f"Nenhum imposto configurado no Odoo com {tax_percentage}%. Será salvo sem imposto, mas a taxa é válida.")
+                f"No tax configured in Odoo with{tax_percentage}%. It will be saved without tax, but the fee is valid.")
         else:
             tax_ids_for_line = [(6, 0, [tax.id])]
 
@@ -185,7 +184,6 @@ class InvoiceSync(models.Model):
 
         _logger.info("Invoice vals para %s: %s", document_no, invoice_vals)
 
-        _logger.info(f"Fatura {document_no} criada com sucesso na empresa {company.name}")
         return invoice
 
     def _get_toc_document_by_id(self, toc_document_id, company):
@@ -205,10 +203,10 @@ class InvoiceSync(models.Model):
             if response.status_code == 200:
                 return response.json()
             else:
-                _logger.error(f"Erro ao buscar documento TOC ID {toc_document_id}: {response.text}")
+                _logger.error(f"Error fetching TOC ID document{toc_document_id}: {response.text}")
                 return None
         except Exception as e:
-            _logger.error(f"Erro ao conectar à TOConline para documento ID {toc_document_id}: {str(e)}")
+            _logger.error(f"Error connecting to TOConline for document ID{toc_document_id}: {str(e)}")
             return None
 
     # def check_cancelled_invoices_from_toconline(self):
