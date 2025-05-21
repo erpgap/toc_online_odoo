@@ -567,7 +567,6 @@ class AccountMove(models.Model):
             date = attributes.get('created_at', '')
 
             record.write({
-                'status' : 'cancelled',
                 'toc_status': 'cancelled',
                 'cancellation_reason' : reason,
                 'cancellation_date' : date
