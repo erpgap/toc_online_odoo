@@ -158,9 +158,21 @@ class InvoiceSync(models.Model):
         else:
             tax_ids_for_line = [(6, 0, [tax.id])]
 
+        product = self.env['product.product'].search([('default_code', '=', codeP)], limit=1)
+        if not product:
+            product_vals = {
+                'name': line.get('description') or 'Produto TOC',
+                'default_code': codeP,
+                'list_price': unit_price,
+                'taxes_id': tax_ids_for_line,
+                'company_id': company.id,
+            }
+            product = self.env['product.product'].create(product_vals)
+            _logger.info("Criado novo produto a partir da fatura TOC %s: código %s", document_no, codeP)
+
         invoice_line_vals = {
-            'product_id': self.env['product.product'].search([('default_code', '=', codeP)], limit=1).id,
-            'name': toc_document_data.get('description'),
+            'product_id': product.id,
+            'name': line.get('description'),
             'quantity': quantity,
             'price_unit': unit_price,
             'tax_ids': tax_ids_for_line,
