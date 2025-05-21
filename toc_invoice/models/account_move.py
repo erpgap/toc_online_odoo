@@ -273,7 +273,6 @@ class AccountMove(models.Model):
             "Authorization": f"Bearer {access_token}"
         }
 
-        print("AAA")
         tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "Desconhecido"
         email = partner.email.strip() if partner.email else ""
         customers = []
