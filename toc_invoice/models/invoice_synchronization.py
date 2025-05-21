@@ -19,7 +19,6 @@ class InvoiceSync(models.Model):
         for company in companies:
             access_token = self.env['toc.api'].get_access_token(company=company)
             if not access_token:
-                _logger.warning(f"Access token not found for company {company.name}")
                 continue
 
             url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=FT&sort=-date"
@@ -53,9 +52,7 @@ class InvoiceSync(models.Model):
 
                 toc_not_in_odoo = [doc for doc in toc_ft_docs if doc["document_no"] not in existing_toc_nos]
 
-                _logger.info("=== Documents already in ODOO (%d) for company %s ===", len(existing_toc_nos),
-                             company.name)
-                _logger.info("=== MISSING DOCUMENTS (%d) for company %s ===", len(toc_not_in_odoo), company.name)
+
 
                 for doc in toc_not_in_odoo:
                     try:
@@ -145,8 +142,6 @@ class InvoiceSync(models.Model):
                     f"The invoice {document_no} has 0% VAT but no exemption reason was provided."
                 )
 
-            _logger.warning(
-                f"No tax configured in Odoo with{tax_percentage}%. It will be saved without tax, but the fee is valid.")
         else:
             tax_ids_for_line = [(6, 0, [tax.id])]
 
@@ -203,62 +198,8 @@ class InvoiceSync(models.Model):
             if response.status_code == 200:
                 return response.json()
             else:
-                _logger.error(f"Error fetching TOC ID document{toc_document_id}: {response.text}")
                 return None
         except Exception as e:
             _logger.error(f"Error connecting to TOConline for document ID{toc_document_id}: {str(e)}")
             return None
 
-    # def check_cancelled_invoices_from_toconline(self):
-    #     """Verifica se faturas enviadas foram canceladas no TOConline e atualiza o Odoo."""
-    #     companies = self.env['res.company'].search([('toc_company_id', '!=', False)])
-    #
-    #     for company in companies:
-    #         access_token = self.env['toc.api'].get_access_token(company=company)
-    #         if not access_token:
-    #             _logger.warning(f"Sem token para empresa {company.name}")
-    #             continue
-    #
-    #         invoices = self.env['account.move'].search([
-    #             ('toc_status', '=', 'sent'),
-    #             ('toc_document_no', '!=', False),
-    #             ('company_id', '=', company.id),
-    #         ])
-    #
-    #         for inv in invoices:
-    #             headers = {
-    #                 "Content-Type": "application/json",
-    #                 "Authorization": f"Bearer {access_token}"
-    #             }
-    #
-    #             url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_no]={inv.toc_document_no}"
-    #
-    #             try:
-    #                 response = requests.get(url, headers=headers, timeout=30)
-    #                 if response.status_code != 200:
-    #                     _logger.warning(
-    #                         f"Erro ao buscar fatura {inv.name} (document_no {inv.toc_document_no}): {response.status_code} - {response.text}")
-    #                     continue
-    #
-    #                 data = response.json()
-    #
-    #                 if not isinstance(data, list) or not data:
-    #                     _logger.warning(
-    #                         f"Fatura {inv.name} não encontrada na TOConline com document_no {inv.toc_document_no}")
-    #                     continue
-    #
-    #                 toc_doc = data[0]
-    #                 toc_status = toc_doc.get('status')
-    #                 voided_reason = toc_doc.get('voided_reason', '')
-    #                 updated_at = toc_doc.get('updated_at', '') or toc_doc.get('created_at', '')
-    #
-    #                 if toc_status == 4:
-    #                     inv.write({
-    #                         'toc_status': 'cancelled',
-    #                         'cancellation_reason': voided_reason,
-    #                         'cancellation_date': updated_at
-    #                     })
-    #                     _logger.info(f"Fatura {inv.name} marcada como cancelada com motivo: {voided_reason}")
-    #
-    #             except Exception as e:
-    #                 _logger.error(f"Erro ao consultar status da fatura {inv.name}: {str(e)}", exc_info=True)

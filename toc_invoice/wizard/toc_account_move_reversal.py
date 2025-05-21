@@ -83,7 +83,6 @@ class CreditNoteWizard(models.TransientModel):
             if isinstance(data, dict):
                 return data
             else:
-                print("Error: API response does not contain a valid dictionary.")
                 return None
 
         except requests.exceptions.RequestException as e:
@@ -117,7 +116,6 @@ class CreditNoteWizard(models.TransientModel):
             if isinstance(data, dict):
                 return data.get("lines", [])
             else:
-                print("Error: API response does not contain a valid dictionary.")
                 return None
 
         except requests.exceptions.RequestException as e:

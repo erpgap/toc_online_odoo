@@ -21,7 +21,6 @@ class CreditNoteSync(models.Model):
         for company in companies:
             access_token = self.env['toc.api'].get_access_token(company=company)
             if not access_token:
-                _logger.warning(f"Access token not found for company {company.name}")
                 continue
 
             url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=NC&sort=-date"

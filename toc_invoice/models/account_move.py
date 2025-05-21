@@ -99,7 +99,6 @@ class AccountMove(models.Model):
         if portuguese_company:
             return portuguese_company.partner_id.state_id.name
         else:
-            print(_("No Portuguese companies found"))
             return False
 
     def get_document_id_by_number(self, access_token, document_no):
@@ -267,7 +266,6 @@ class AccountMove(models.Model):
         """
 
         if partner.toc_online_id:
-            print(_(f"Client already has an ID in TOConline: {partner.toc_online_id}"))
             return partner.toc_online_id
 
         headers = {
@@ -285,7 +283,6 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    print(_(f"Customer found via NIF: {customers[0]['attributes']['business_name']}"))
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
@@ -295,7 +292,6 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    print(f"Customer found via email: {customers[0]['attributes']['business_name']}")
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
@@ -324,7 +320,6 @@ class AccountMove(models.Model):
 
         if response.status_code in (200, 201):
             customer_id = response.json()["data"]["id"]
-            print(f"Client created successfully(ID: {customer_id})")
             partner.sudo().write({'toc_online_id': customer_id})
             return customer_id
         else:
@@ -595,7 +590,6 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
         if customers:
-            print(_(f"Client found on TOConline: {customers[0]['attributes']['business_name']}"))
             return customers[0]["id"]
         return None
 

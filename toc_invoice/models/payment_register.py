@@ -8,36 +8,6 @@ class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
 
-    # def get_total_paid_from_toc_by_receivable_id(self, toc_receipt_id):
-    #     access_token = self.env['toc.api'].get_access_token()
-    #     if not access_token:
-    #         raise UserError("TOConline token not defined.")
-    #
-    #     headers = {
-    #         "Authorization": f"Bearer {access_token}",
-    #         "Content-Type": "application/json",
-    #     }
-    #
-    #     endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts"
-    #     response = requests.get(endpoint, headers=headers, timeout=60)
-    #
-    #     if response.status_code != 200:
-    #         raise UserError(f"Error getting TOC receipt{toc_receipt_id}: {response.text}")
-    #
-    #     result = response.json()
-    #     receipts = result if isinstance(result, list) else [result]
-    #
-    #     total_paid = 0.0
-    #     for receipt in receipts:
-    #         for line in receipt.get("lines", []):
-    #             receivable_id = line.get("receivable_id")
-    #             received_value = line.get("received_value", 0.0)
-    #
-    #             if receivable_id == toc_receipt_id:
-    #                 print(f"Receivable ID: {receivable_id} | Amount received: {received_value}")
-    #                 total_paid += received_value
-    #
-    #     return total_paid
 
     def action_create_payments(self):
 
@@ -84,7 +54,6 @@ class AccountPaymentRegister(models.TransientModel):
                 "receivable_type": "Document",
                 "received_value": wizard.amount,
             }]
-
             payload = {
                 "company_id": company_id,
                 "country_id": partner.country_id.id if partner.country_id else 1,
