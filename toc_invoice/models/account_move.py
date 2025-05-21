@@ -373,7 +373,7 @@ class AccountMove(models.Model):
     def action_send_invoice_to_toconline(self):
         invoices_to_send = self.env['account.move'].search([
             ('state', '=', 'posted'),
-            ('toc_status', '!=', 'sent'),
+            ('toc_status', '=', 'draft'),
             ('move_type', '=', 'out_invoice'),
         ])
 
