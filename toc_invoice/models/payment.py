@@ -185,6 +185,7 @@ class AccountPayment(models.Model):
                 invoice.invalidate_cache()
             else:
                 print(f" Receipt {receipt_id_str} was already on the invoice {invoice.name}")
+                print(f" Receipt {receipt_id_str} was already on the invoice {invoice.name}")
 
             return True
 
