@@ -87,7 +87,20 @@ class InvoiceSync(models.Model):
         toc_client_id = toc_document.get('customer_id')
         partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
         if not partner:
-            raise UserError(f"Client with toc_id {toc_client_id} not found")
+            partner_vals = {
+                'name': toc_document.get('customer_business_name') or 'Cliente TOC',
+                'toc_online_id': toc_client_id,
+                'street': toc_document.get('customer_address_detail'),
+                'zip': toc_document.get('customer_postcode'),
+                'city': toc_document.get('customer_city'),
+                'vat': toc_document.get('customer_tax_registration_number'),
+                'country_id': self.env['res.country'].search(
+                    [('code', '=', toc_document.get('customer_country', 'PT'))], limit=1).id,
+
+                'customer_rank': 1,
+            }
+            partner = self.env['res.partner'].create(partner_vals)
+            _logger.info("Criado cliente novo a partir da fatura TOC %s com ID %s", document_no, toc_client_id)
 
         self = self.with_company(company).sudo()
 

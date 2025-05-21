@@ -381,6 +381,7 @@ class AccountMove(models.Model):
             raise UserError(_("No invoices to send."))
 
         access_token = self.env['toc.api'].get_access_token()
+
         if not access_token:
             raise UserError(_("Could not get or refresh access token."))
 
