@@ -261,8 +261,8 @@ class AccountMove(models.Model):
 
     def get_or_create_customer_in_toconline(self, access_token, partner):
         """
-        Checks if the client already exists in TOConline (via toc_online_id, NIF or email).
-        If it does not exist, it creates the client, ensuring that there are no duplicates.
+        Verifica se o cliente já existe no TOConline pelo toc_online_id ou email (se NIF for 999999990 ou vazio).
+        Caso não exista, cria-o.
         """
 
         if partner.toc_online_id:
@@ -273,11 +273,11 @@ class AccountMove(models.Model):
             "Authorization": f"Bearer {access_token}"
         }
 
-        tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "Desconhecido"
+        tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "999999990"
         email = partner.email.strip() if partner.email else ""
         customers = []
 
-        if tax_number != "Desconhecido" and tax_number.isdigit() and len(tax_number) == 9:
+        if tax_number != "999999990" and tax_number.isdigit() and len(tax_number) == 9:
             search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
@@ -286,7 +286,7 @@ class AccountMove(models.Model):
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        if not customers and email:
+        if email:
             search_url = f"{TOC_BASE_URL}/api/customers?filter[email]={email}"
             response = requests.get(search_url, headers=headers)
             if response.status_code == 200:
@@ -300,7 +300,7 @@ class AccountMove(models.Model):
             "data": {
                 "type": "customers",
                 "attributes": {
-                    "tax_registration_number": tax_number ,
+                    "tax_registration_number": tax_number,
                     "business_name": partner.name,
                     "contact_name": partner.name,
                     "website": partner.website or "",
@@ -324,11 +324,7 @@ class AccountMove(models.Model):
             return customer_id
         else:
             error_msg = response.text
-            if "already exists" in error_msg.lower():
-                raise UserError(
-                    _(" The client already exists in TOConline, but it was not possible to link it automatically."))
-            else:
-                raise UserError(_(" Error creating client in TOConline: %s") % error_msg)
+            raise UserError(_("Erro ao criar cliente em TOConline: %s") % error_msg)
 
     def get_or_create_product_in_toconline(self, access_token, product):
 
@@ -505,7 +501,6 @@ class AccountMove(models.Model):
                 self.env.cr.commit()
 
             except Exception as e:
-                # Em caso de erro inesperado também marca como error
                 record.write({
                     'toc_status': 'error',
                     'toc_error_message': str(e),
