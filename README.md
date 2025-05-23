@@ -29,9 +29,13 @@ Extra information for using the module
 ======================================
 This module allows communication between Odoo and the TOConline platform, which is Portuguese, therefore containing only Portuguese VAT values.
 This module is designed to work with Portuguese VAT values, as required by the TOConline platform. In Portugal, the applicable VAT (IVA) rates vary depending on the location of the business (mainland, Azores, Madeira) and the nature of the goods or services
+
 | Region   | Standard Rate | Intermediate Rate | Reduced Rate |
 | -------- | ------------- | ----------------- | ------------ |
 | Mainland | 23%           | 13%               | 6%           |
 | Azores   | 16%           | 9%                | 4%           |
 | Madeira  | 22%           | 12%               | 5%           |
 
+Depending on your company's location and operations, not all VAT rates may be valid for use. For example, a company based in mainland Portugal should not use Azores or Madeira VAT rates.
+
+Please ensure that your company's VAT settings in Odoo reflect the correct region to avoid compliance issues when communicating with TOConline.
