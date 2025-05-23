@@ -24,3 +24,14 @@ Create Credit Notes in TOConline from Odoo.
 Bidirectional synchronization of Credit Note payments.
 Handle document cancellations.
 Enforce date and sequence restrictions (e.g., no retroactive invoices or refunds).
+
+Extra information for using the module
+======================================
+This module allows communication between Odoo and the TOConline platform, which is Portuguese, therefore containing only Portuguese VAT values.
+This module is designed to work with Portuguese VAT values, as required by the TOConline platform. In Portugal, the applicable VAT (IVA) rates vary depending on the location of the business (mainland, Azores, Madeira) and the nature of the goods or services
+| Region   | Standard Rate | Intermediate Rate | Reduced Rate |
+| -------- | ------------- | ----------------- | ------------ |
+| Mainland | 23%           | 13%               | 6%           |
+| Azores   | 16%           | 9%                | 4%           |
+| Madeira  | 22%           | 12%               | 5%           |
+
