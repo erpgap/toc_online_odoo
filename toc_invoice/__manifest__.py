@@ -19,7 +19,7 @@
         'data/ir_cron_sync_credit_note.xml',
         'data/ir_cron_sync_invoice_toc.xml',
         'wizard/toc_cancel_invoice.xml',
-        'data/ir_cron_invoice_check.xml'
+
 
 
     ],

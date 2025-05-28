@@ -4,7 +4,7 @@
         <field name="model_id" ref="model_invoice_sync"/>
         <field name="state">code</field>
         <field name="code">model.sync_invoices_from_toc()</field>
-        <field name="interval_number">2</field>
+        <field name="interval_number">22</field>
         <field name="interval_type">minutes</field>
         <field name="active">True</field>
     </record>

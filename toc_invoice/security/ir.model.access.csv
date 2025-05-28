@@ -3,3 +3,4 @@ access_credit_note_wizard,credit note wizard,model_credit_note_wizard,base.group
 access_credit_note_sync,access_credit_note_sync,model_credit_note_sync,base.group_user,1,0,0,0
 access_invoice_sync,access_invoice_sync,model_invoice_sync,base.group_user,1,0,1,0
 access_cancel_invoice_wizard,cancel.invoice.wizard,model_cancel_invoice_wizard,,1,1,1,1
+

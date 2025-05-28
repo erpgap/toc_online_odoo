@@ -85,7 +85,6 @@ class AccountPayment(models.Model):
             return False
 
         invoice = invoices[0]
-
         try:
             toc_receipt_ids = json.loads(invoice.toc_receipt_ids or "[]")
             if not isinstance(toc_receipt_ids, list):

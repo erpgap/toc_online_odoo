@@ -53,7 +53,7 @@
     <field name="cancellation_reason" readonly="1" invisible="toc_status != 'cancelled'" options="{'no_open': True}"/><br/>
 
     <label for="cancellation_date" style="font-weight: bold; color: #a94442;">Data:</label><br/>
-    <field name="cancellation_date" readonly="1" invisible="toc_status != 'cancelled'" options="{'no_open': True}"/>
+    <field name="cancellation_date" readonly="1" invisible="toc_status != 'cancelled' or 'toc_status_credit_note' =='sent'" options="{'no_open': True}"/>
   </div>
 </xpath>
 

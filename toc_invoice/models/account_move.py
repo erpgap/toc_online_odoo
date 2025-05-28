@@ -377,8 +377,6 @@ class AccountMove(models.Model):
             ('move_type', '=', 'out_invoice'),
         ])
 
-        if not invoices_to_send:
-            raise UserError(_("No invoices to send."))
 
         access_token = self.env['toc.api'].get_access_token()
 
@@ -415,6 +413,7 @@ class AccountMove(models.Model):
                     tax_percentage = line.tax_ids[0].amount if line.tax_ids else 0
 
                     tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
+
                     tax_code = tax_info["code"]
                     tax_percentage_toc = tax_info["percentage"]
                     tax_id = tax_info["id"]
@@ -442,6 +441,7 @@ class AccountMove(models.Model):
                 currency_obj = record.currency_id
                 company_currency = record.company_id.currency_id
                 date = record.invoice_date or fields.Date.today()
+
                 conversion_rate = currency_obj._get_conversion_rate(currency_obj, company_currency, record.company_id,
                                                                     date)
 
@@ -502,10 +502,7 @@ class AccountMove(models.Model):
                 self.env.cr.commit()
 
             except Exception as e:
-                record.write({
-                    'toc_status': 'error',
-                    'toc_error_message': str(e),
-                })
+
                 self.env.cr.commit()
 
     def action_cancel_invoice_toconline(self):
@@ -613,3 +610,6 @@ class AccountMove(models.Model):
             'target': 'new',
             'context': {'default_cancel_reason': '', 'active_id': self.id},
         }
+
+
+

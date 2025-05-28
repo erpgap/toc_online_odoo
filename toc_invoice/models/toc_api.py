@@ -112,13 +112,6 @@ class TocAPI(models.AbstractModel):
 
         return access_token
 
-    def get_refresh_token(self, authorization_code, company=None):
-        tokens = self._get_tokens(authorization_code, company=company)
-        return tokens.get("refresh_token") or {"error": tokens.get("error")}
-
-    def get_expires_in(self, authorization_code, company=None):
-        tokens = self._get_tokens(authorization_code, company=company)
-        return tokens.get("expires_in") or {"error": tokens.get("error")}
 
     def is_token_expired(self):
         config = self.env['ir.config_parameter'].sudo()
@@ -158,7 +151,6 @@ class TocAPI(models.AbstractModel):
             "Accept": "application/json",
             "Authorization": f"Basic {base64_credentials}"
         }
-
         response = requests.post(token_url, data=payload, headers=headers)
 
         if response.status_code == 200:

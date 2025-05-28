@@ -89,38 +89,6 @@ class CreditNoteWizard(models.TransientModel):
             print(f"Error connecting to API: {e}")
             return None
 
-    def get_document_lines_only(self, base_url, access_token, document_no):
-        """
-        Gets the lines of a sales document from the TOConline API.
-
-        :param base_url: TOConline API base URL
-        :param access_token: Bearer authentication token
-        :param document_no: Document number to be queried
-        :return: List of document lines or None in case of error
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
-
-        url = f"{base_url}/api/v1/commercial_sales_documents?filter[document_no]={document_no}"
-
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
-
-            if isinstance(data, dict):
-                return data.get("lines", [])
-            else:
-                return None
-
-        except requests.exceptions.RequestException as e:
-            print(f"Error connecting to API: {e}")
-            return None
 
     @api.onchange('item_code')
     def _onchange_item_code(self):
@@ -209,7 +177,6 @@ class CreditNoteWizard(models.TransientModel):
                 "tax_code": tax_code,
                 "tax_percentage": tax_percentage or 0.0,
                 "tax_country_region": tax_region,
-
                 "item_type": "Product",
                 "exemption_reason": global_exemption_reason,
             }],
@@ -226,8 +193,6 @@ class CreditNoteWizard(models.TransientModel):
         active_id = self.env.context.get('active_id')
         invoice = self.env['account.move'].browse(active_id)
         invoice.set_value_credit_note(variavel_auc)
-
-
 
         if response.status_code == 200:
             self.invoice_id.set_toc_status_credit_note('sent')
@@ -265,16 +230,13 @@ class CreditNoteWizard(models.TransientModel):
         if not credit_note:
             raise UserError(_("Error creating credit note in Odoo."))
 
-
         credit_note.write({
             'toc_document_no_credit_note': response_data.get('document_no'),
             'toc_invoice_url': response_data.get('invoice_url', ''),
+            'toc_status_credit_note':'sent'
         })
 
         credit_note._cr.commit()
-
-
-
         return {'type': 'ir.actions.act_window_close'}
 
 
