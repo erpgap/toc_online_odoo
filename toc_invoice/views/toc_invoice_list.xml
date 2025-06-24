@@ -1,20 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-  <record id="view_invoice_tree_toconline" model="ir.ui.view">
-    <field name="name">account.invoice.list.toconline</field>
-    <field name="model">account.move</field>
-    <field name="inherit_id" ref="account.view_invoice_tree"/>
-    <field name="arch" type="xml">
-      <xpath expr="//field[@name='name']" position="replace">
-        <field name="toc_display_number" decoration-bf="1" decoration-danger="made_sequence_gap and state == 'posted'" widget="char_with_placeholder_field" placeholder="/"/>
-      </xpath>
-
-      <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
-        <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund', 'out_receipt')</attribute>
-      </xpath>
-
-
-
-    </field>
-  </record>
+    <record id="view_invoice_tree_toconline" model="ir.ui.view">
+        <field name="name">account.invoice.list.toconline</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="toc_display_number"/>
+            </xpath>
+            <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
+                <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund',
+                    'out_receipt')
+                </attribute>
+            </xpath>
+        </field>
+    </record>
 </odoo>

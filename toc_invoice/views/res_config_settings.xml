@@ -25,7 +25,8 @@
                         <div class="row mt16">
                             <div class="col-6">
                                 <setting string="TOConline Company ID">
-                                    <field name="toc_company_id" readonly="1" invisible="not toc_company_id" groups="base.group_system"/>
+                                    <field name="toc_company_id" readonly="1" invisible="not toc_company_id"
+                                           groups="base.group_system"/>
                                 </setting>
                             </div>
                         </div>

@@ -400,7 +400,8 @@ class AccountMove(models.Model):
         for record in invoices_to_send:
             partner = record.partner_id
             if not all([partner.name, partner.street, partner.city, partner.country_id, partner.zip]):
-                raise UserError(_("Customer must have name, address, city, country and postal code filled in."))
+                raise UserError(_(
+                    "Invoice %s customer must have name, address, city, country and postal code filled in." % record.name))
 
             try:
                 customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
