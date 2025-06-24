@@ -296,6 +296,7 @@ class AccountMove(models.Model):
                     return customers[0]["id"]
 
         create_url = f"{TOC_BASE_URL}/api/customers"
+        print("------ create_url:", create_url)
         customer_payload = {
             "data": {
                 "type": "customers",
@@ -377,7 +378,6 @@ class AccountMove(models.Model):
             ('move_type', '=', 'out_invoice'),
         ])
 
-
         access_token = self.env['toc.api'].get_access_token()
 
         if not access_token:
@@ -396,6 +396,7 @@ class AccountMove(models.Model):
             tax for tax in taxes_data
             if tax["attributes"]["tax_country_region"] == tax_region
         ]
+        print("------ Tax Region:", tax_region)
 
         for record in invoices_to_send:
             partner = record.partner_id
@@ -404,6 +405,7 @@ class AccountMove(models.Model):
                     "Invoice %s customer must have name, address, city, country and postal code filled in." % record.name))
 
             try:
+
                 customer_id = self.get_or_create_customer_in_toconline(access_token, partner)
 
                 global_exemption_reason = None

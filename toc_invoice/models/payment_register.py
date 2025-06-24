@@ -4,17 +4,13 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
+
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
-
-
     def action_create_payments(self):
-
         res = super().action_create_payments()
-
         for wizard in self:
-
             access_token = self.env['toc.api'].get_access_token()
             if not access_token:
                 raise UserError(_("TOConline access token not found"))

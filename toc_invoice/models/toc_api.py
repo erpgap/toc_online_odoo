@@ -22,7 +22,7 @@ class TocAPI(models.AbstractModel):
 
         if not client_id or not client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured."))
-
+        print(auth_url, redirect_uri, client_id)
         url_aux = f"{auth_url}/auth?"
         params = {
             "client_id": client_id,

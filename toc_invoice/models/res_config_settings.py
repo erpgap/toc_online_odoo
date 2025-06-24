@@ -3,21 +3,22 @@ import requests
 from datetime import timedelta
 from odoo.addons.toc_invoice.utils import token_url
 
+
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
     toc_online_client_id = fields.Char(
-        string="TOConline Client ID",
+        string="Client ID",
         related='company_id.toc_online_client_id',
         readonly=False
     )
     toc_online_client_secret = fields.Char(
-        string="TOConline Client Secret",
+        string="Client Secret",
         related='company_id.toc_online_client_secret',
         readonly=False
     )
     toc_company_id = fields.Char(
-        string="TOConline Company ID",
+        string="Company ID",
         related='company_id.toc_company_id',
         readonly=True
     )
