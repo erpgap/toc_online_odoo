@@ -1,0 +1,4 @@
+[submodule ".external/l10n-portugal"]
+	path = .external/l10n-portugal
+	url = https://github.com/OCA/l10n-portugal.git
+	branch = 18.0
