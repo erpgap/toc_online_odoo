@@ -6,7 +6,11 @@ from datetime import datetime, timedelta
 from odoo.exceptions import UserError
 
 from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
+import logging
+_logger = logging.getLogger(__name__)
 
+
+TOC_TIMEOUT = 120
 
 class TocAPI(models.AbstractModel):
     _name = 'toc.api'
@@ -14,6 +18,37 @@ class TocAPI(models.AbstractModel):
 
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
+
+    def toc_request(self, method, url, payload=None, access_token=None, timeout=TOC_TIMEOUT):
+        """
+        Sends a standardized HTTP request to TOConline with a fixed header.
+
+        :param method: 'GET', 'POST', 'PATCH', etc.
+        :param url: Full URL of the TOConline endpoint
+        :param payload: JSON request body (dict)
+        :param access_token: TOConline access token
+        :param timeout: maximum request timeout
+        :return: response (requests object)
+        :raises: UserError in case of error
+        """
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            _logger.info("TOC %s %s", method.upper(), url)
+            _logger.debug("Payload: %s", payload)
+
+            response = requests.request(method, url, json=payload, headers=headers, timeout=timeout)
+
+            _logger.debug("Response [%s]: %s", response.status_code, response.text)
+            response.raise_for_status()
+            return response
+
+        except requests.exceptions.RequestException as e:
+            _logger.exception("Erro TOConline %s %s", method.upper(), url)
+            raise UserError(_("Error communicating with TOConline: %s") % str(e))
 
     def get_authorization_url(self, company=None):
         company = (company or self.env.company).sudo()
