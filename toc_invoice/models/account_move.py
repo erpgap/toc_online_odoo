@@ -4,6 +4,8 @@ from odoo.exceptions import UserError
 import logging
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 _logger = logging.getLogger(__name__)
+from odoo.exceptions import ValidationError
+from datetime import date
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -76,6 +78,27 @@ class AccountMove(models.Model):
                 move.toc_total_display = -abs(move.credit_note_total_value)
             else:
                 move.toc_total_display = move.amount_total_in_currency_signed
+
+
+    @api.constrains('invoice_line_ids')
+    def _check_product_internal_reference(self):
+        for record in self:
+            for line in record.invoice_line_ids:
+                product = line.product_id
+                if product and not product.product_tmpl_id.default_code:
+                    raise ValidationError(
+                        f"The product '{product.name}' must have an internal reference (default_code) set."
+                    )
+
+    @api.constrains('invoice_date', 'invoice_date_due')
+    def _check_invoice_dates(self):
+        today = date.today()
+        for record in self:
+            if record.invoice_date and record.invoice_date < today:
+                raise ValidationError("The invoice date must be today or a future date.")
+
+            if record.invoice_date_due and record.invoice_date_due < today:
+                raise ValidationError("The due date must be today or a future date.")
 
     def get_base_url(self):
         return  TOC_BASE_URL
