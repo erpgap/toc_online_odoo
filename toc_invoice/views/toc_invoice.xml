@@ -35,15 +35,15 @@
                         string="Cancel TOConline Invoice"
                         class="btn btn-outline-danger"
                         style="font-weight: bold; background-color: #f8d7da; border-color: #f5c2c7; color: #842029;"
-                        invisible="state != 'posted' or toc_status != 'sent'"/>
+                        invisible="1"/>
             </xpath>
 
             <xpath expr="//group//div[@class='d-flex']" position="after">
                 <div style="display: flex; align-items: center; margin-right: 20px;">
                     <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;"
-                           invisible="state != 'posted'"/>
+                           invisible="toc_status != 'sent'"/>
                     <field name="checkbox" class="my-green-checkbox"
-                           readonly="toc_status == 'sent' or toc_status == 'cancelled'" invisible="state != 'posted'"/>
+                           readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
                 </div>
             </xpath>
 
