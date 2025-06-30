@@ -94,11 +94,13 @@ class AccountMove(models.Model):
     def _check_invoice_dates(self):
         today = date.today()
         for record in self:
-            if record.invoice_date and record.invoice_date < today:
-                raise ValidationError("The invoice date must be today or a future date.")
-
-            if record.invoice_date_due and record.invoice_date_due < today:
-                raise ValidationError("The due date must be today or a future date.")
+            if record.toc_status != 'sent' and record.toc_status != 'cancelled':
+                if record.invoice_date and record.invoice_date < today:
+                    raise ValidationError("The invoice date must be today or a future date.")
+                if record.invoice_date_due and record.invoice_date_due < today:
+                    raise ValidationError("The due date must be today or a future date.")
+            if record.toc_status == 'cancelled':
+                raise ValidationError("The invoice has already been cancelled in TOConline and cannot be modified.")
 
     def get_base_url(self):
         return  TOC_BASE_URL
@@ -449,9 +451,12 @@ class AccountMove(models.Model):
                     )
 
                     self._handle_response(record, response)
+                    for records in self:
+                        if records.toc_status == 'sent':
+                            records.checkbox = True
 
                 except Exception as e:
-                    _logger.exception("Erro ao enviar fatura %s ao TOConline: %s", record.name, str(e))
+                    _logger.exception("Error while sending invoice %s to TOConline: %s", record.name, str(e))
                     record.write({
                         'toc_status': 'error',
                         'toc_error_message': str(e),
@@ -572,19 +577,32 @@ class AccountMove(models.Model):
                     }
                 }
             }
-            url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
-            response = self.env['toc.api'].toc_request(
-                method='PATCH',
-                url=url,
-                payload=cancel_payload,
-                access_token=access_token
-            )
+            try:
+                url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+                response = self.env['toc.api'].toc_request(
+                    method='PATCH',
+                    url=url,
+                    payload=cancel_payload,
+                    access_token=access_token
+                )
+
+            except Exception as e:
+                for invoice in self:
+                    if invoice.toc_status != 'cancelled':
+                        invoice.state = "draft"
+                        invoice.env.cr.commit()
+                raise UserError(
+                    _(f"{e}"))
+
 
             if response.status_code != 200:
+                for invoice in self:
+                    if invoice.toc_status != 'cancelled':
+                        invoice.state = "draft"
+                        invoice.env.cr.commit()
                 raise UserError(
                     _(f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}")
                 )
-
             response_data = response.json()
 
             attributes = response_data.get('data', {}).get('attributes', {})
@@ -650,6 +668,34 @@ class AccountMove(models.Model):
             'target': 'new',
             'context': {'default_cancel_reason': '', 'active_id': self.id},
         }
+
+    def button_cancel(self):
+        res = super().button_cancel()
+
+        for invoice in self:
+            access_token = self.env['toc.api'].get_access_token()
+            if self._is_saft_exported(invoice.toc_document_id, access_token):
+                raise ValidationError("It is not possible to cancel this document because it has already been included in the SAFT.")
+            else:
+                return invoice.open_cancel_invoice_wizard()
+
+        return res
+
+
+    def _is_saft_exported(self, document_id, access_token):
+        url = f"{TOC_BASE_URL}/api/commercial_sales_documents/{document_id}"
+        response = self.env['toc.api'].toc_request(
+            method='GET',
+            url=url,
+            access_token=access_token
+        )
+
+        if response.status_code == 200:
+            data = response.json().get("data", {}).get("attributes", {})
+            communication_status = data.get("communication_status")
+            return communication_status != "unsent"
+        else:
+            raise UserError(f"Error while checking SAFT status in TOConline: {response.text}")
 
     ### Credit Note ###
 
