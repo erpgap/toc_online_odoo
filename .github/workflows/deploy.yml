@@ -1,0 +1,15 @@
+name: Deploy 
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-production:
+    name: Deploy 
+    runs-on: ['self-hosted']
+    steps:
+      - name: Update Odoo and disable maintenance
+        run: |
+          sudo su - egap -c "bash -c '~/.local/bin/odoo-update odoo --force'"
