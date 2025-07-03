@@ -12,4 +12,5 @@ jobs:
     steps:
       - name: Update Odoo
         run: |
-          sudo su - egap -c "bash -c '~/.local/bin/odoo-update'"
+          sudo su - egap -c "/home/egap/.local/bin/odoo-update"
+
