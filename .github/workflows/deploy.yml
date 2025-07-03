@@ -8,8 +8,7 @@ on:
 jobs:
   deploy:
     name: Deploy 
-    runs-on: ['self-hosted']
-
+    runs-on: ['self-hosted', 'odoo-ines-toconline']
     steps:
       - name: Show runner machine info
         run: |
