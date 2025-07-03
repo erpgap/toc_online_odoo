@@ -1,8 +1,8 @@
 {
     'name': 'Portugal TOCOnline Integration',
-    'version': '1.0.0',
-    'description': 'Portuguese certified invoices using TOCOnline',
-    'summary': 'Portuguese certified invoices using TOCOnline',
+    'version': '1.0.1',
+    'description': 'Portuguese certified invoices using TOCOnline.',
+    'summary': 'Portuguese certified invoices using TOCOnline.',
     'category': 'Accounting/Accounting',
     "license": "AGPL-3",
     'depends': ['base', 'web', 'contacts', 'product', 'account' , 'l10n_pt_vat' ],
