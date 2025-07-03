@@ -12,4 +12,4 @@ jobs:
     steps:
       - name: Update Odoo and disable maintenance
         run: |
-          sudo su - egap -c "bash -c '~/.local/bin/odoo-update odoo --force'"
+          sudo su - egap -c "bash -c '~/.local/bin/odoo-update'"
