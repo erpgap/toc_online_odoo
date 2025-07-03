@@ -46,8 +46,12 @@ class TocAPI(models.AbstractModel):
             response.raise_for_status()
             return response
 
+        except requests.exceptions.Timeout:
+            _logger.error("Timeout while trying to access %s %s", method.upper(), url)
+            raise UserError(_("The request to TOConline timed out after %s seconds.") % timeout)
+
         except requests.exceptions.RequestException as e:
-            _logger.exception("Erro TOConline %s %s", method.upper(), url)
+            _logger.exception("TOConline error on %s %s", method.upper(), url)
             raise UserError(_("Error communicating with TOConline: %s") % str(e))
 
     def get_authorization_url(self, company=None):

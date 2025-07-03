@@ -99,7 +99,11 @@ class AccountMove(models.Model):
                     raise ValidationError("The invoice date must be today or a future date.")
                 if record.invoice_date_due and record.invoice_date_due < today:
                     raise ValidationError("The due date must be today or a future date.")
-            if record.toc_status == 'cancelled':
+
+    @api.constrains('state')
+    def _check_state_invoice(self):
+        for record in self:
+            if record.toc_status == 'cancelled' and record.state == 'draft':
                 raise ValidationError("The invoice has already been cancelled in TOConline and cannot be modified.")
 
     def get_base_url(self):
@@ -459,7 +463,6 @@ class AccountMove(models.Model):
                     _logger.exception("Error while sending invoice %s to TOConline: %s", record.name, str(e))
                     record.write({
                         'toc_status': 'error',
-                        'toc_error_message': str(e),
                     })
 
     def _validate_partner_fields(self, partner, invoice):
@@ -531,7 +534,6 @@ class AccountMove(models.Model):
             error_msg = f"Invoice {record.name} failed: {response.status_code} - {response.text}"
             record.write({
                 'toc_status': 'error',
-                'toc_error_message': error_msg
             })
         else:
             data = response.json()
@@ -577,29 +579,17 @@ class AccountMove(models.Model):
                     }
                 }
             }
-            try:
-                url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
-                response = self.env['toc.api'].toc_request(
+
+            url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+            response = self.env['toc.api'].toc_request(
                     method='PATCH',
                     url=url,
                     payload=cancel_payload,
                     access_token=access_token
                 )
 
-            except Exception as e:
-                for invoice in self:
-                    if invoice.toc_status != 'cancelled':
-                        invoice.state = "draft"
-                        invoice.env.cr.commit()
-                raise UserError(
-                    _(f"{e}"))
-
 
             if response.status_code != 200:
-                for invoice in self:
-                    if invoice.toc_status != 'cancelled':
-                        invoice.state = "draft"
-                        invoice.env.cr.commit()
                 raise UserError(
                     _(f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}")
                 )
@@ -612,9 +602,9 @@ class AccountMove(models.Model):
             record.write({
                 'toc_status': 'cancelled',
                 'cancellation_reason' : reason,
-                'cancellation_date' : date
+                'cancellation_date' : date,
+                'state': 'cancel'
             })
-
             self.env.cr.commit()
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
@@ -668,19 +658,6 @@ class AccountMove(models.Model):
             'target': 'new',
             'context': {'default_cancel_reason': '', 'active_id': self.id},
         }
-
-    def button_cancel(self):
-        res = super().button_cancel()
-
-        for invoice in self:
-            access_token = self.env['toc.api'].get_access_token()
-            if self._is_saft_exported(invoice.toc_document_id, access_token):
-                raise ValidationError("It is not possible to cancel this document because it has already been included in the SAFT.")
-            else:
-                return invoice.open_cancel_invoice_wizard()
-
-        return res
-
 
     def _is_saft_exported(self, document_id, access_token):
         url = f"{TOC_BASE_URL}/api/commercial_sales_documents/{document_id}"
