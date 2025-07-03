@@ -9,8 +9,34 @@ jobs:
   deploy:
     name: Deploy 
     runs-on: ['self-hosted']
+
     steps:
-      - name: Update Odoo
+      - name: Show runner machine info
+        run: |
+          echo "Hostname:"
+          hostname
+          echo "Current user:"
+          whoami
+          echo "IP addresses:"
+          ip addr show
+          echo "OS details:"
+          uname -a
+
+      - name: Check current user
+        run: whoami
+
+      - name: Check home directory of egap
+        run: |
+          sudo su - egap -c "echo \$HOME"
+
+      - name: List odoo-update script
+        run: |
+          sudo su - egap -c "ls -l /home/egap/.local/bin/odoo-update || echo 'Script not found'"
+
+      - name: Check if odoo-update is executable
+        run: |
+          sudo su - egap -c "test -x /home/egap/.local/bin/odoo-update && echo 'Executable' || echo 'Not executable'"
+
+      - name: Run odoo-update script
         run: |
           sudo su - egap -c "/home/egap/.local/bin/odoo-update"
-
