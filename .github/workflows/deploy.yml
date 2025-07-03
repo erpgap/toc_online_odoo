@@ -6,10 +6,10 @@ on:
       - main
 
 jobs:
-  deploy-production:
+  deploy:
     name: Deploy 
     runs-on: ['self-hosted']
     steps:
-      - name: Update Odoo and disable maintenance
+      - name: Update Odoo
         run: |
           sudo su - egap -c "bash -c '~/.local/bin/odoo-update'"
