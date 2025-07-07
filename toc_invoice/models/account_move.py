@@ -475,7 +475,7 @@ class AccountMove(models.Model):
 
         for line in record.invoice_line_ids:
             product_id = self.get_or_create_product_in_toconline(access_token, line.product_id)
-            tax_percentage = line.tax_ids[0].amount if line.tax_ids else 0
+            tax_percentage = sum(t.amount for t in line.tax_ids) if line.tax_ids else 0
             tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
 
             if tax_percentage == 0 and not global_exemption_reason:
@@ -790,6 +790,21 @@ class AccountMove(models.Model):
         })
 
         self._cr.commit()
+
+    def write(self, vals):
+        restricted_fields = {
+            'invoice_line_ids', 'partner_id', 'invoice_date', 'invoice_date_due',
+            'currency_id', 'journal_id', 'amount_total', 'amount_untaxed', 'amount_tax'
+        }
+
+        for move in self:
+            if move.toc_status == 'sent' and move.state != 'cancel':
+                if any(field in vals for field in restricted_fields):
+                    raise UserError(
+                        _("This invoice has already been sent to TOConline and can no longer be edited. Please cancel it or create a credit note."))
+
+        return super().write(vals)
+
 
 
 

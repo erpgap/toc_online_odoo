@@ -16,7 +16,6 @@ class CreditNoteSync(models.Model):
     def sync_credit_notes_from_toc(self):
         """Fetch credit notes from TOConline, check which are missing in Odoo, and create them."""
 
-        # Pega todas as empresas com integração TOC configurada
         companies = self.env['res.company'].search([('toc_company_id', '!=', False)])
         for company in companies:
             access_token = self.env['toc.api'].get_access_token(company=company)
@@ -24,16 +23,13 @@ class CreditNoteSync(models.Model):
                 continue
 
             url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=NC&sort=-date"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}"
-            }
 
             try:
-                response = requests.get(url, headers=headers, timeout=30)
-
-                if response.status_code != 200:
-                    raise UserError(_(f"Error communicating with TOConline: {response.status_code} - {response.text}"))
+                response = self.env['toc.api'].toc_request(
+                    method='GET',
+                    url=url,
+                    access_token=access_token,
+                )
 
                 documents = response.json()
 
@@ -43,8 +39,8 @@ class CreditNoteSync(models.Model):
                 toc_nc_docs = [
                     doc for doc in documents
                     if doc.get("document_type") == "NC"
-                    and doc.get("document_no")
-                    and doc.get("date")
+                       and doc.get("document_no")
+                       and doc.get("date")
                 ]
 
                 toc_doc_nos = [doc.get("document_no") for doc in toc_nc_docs]
@@ -146,18 +142,14 @@ class CreditNoteSync(models.Model):
             raise UserError(f"TOConline access token not found for company {company.name}.")
 
         url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
 
         try:
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                _logger.error(f"Error fetching TOConline document ID {toc_document_id}: {response.text}")
-                return None
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=url,
+                access_token=access_token,
+            )
+            return response.json()
         except Exception as e:
-            _logger.error(f"Connection error to TOConline while fetching document ID {toc_document_id}: {str(e)}")
+            _logger.error(f"Error fetching TOConline document ID {toc_document_id}: {str(e)}")
             return None

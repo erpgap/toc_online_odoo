@@ -12,8 +12,8 @@ class InvoiceSync(models.Model):
     _description = 'Sync Invoices from TOConline'
 
     @api.model
-    def sync_invoices_from_toc(self):
-        """Synchronization of invoices existing in TOCOnline and not in Odoo."""
+    def sync_credit_notes_from_toc(self):
+        """Fetch credit notes from TOConline, check which are missing in Odoo, and create them."""
 
         companies = self.env['res.company'].search([('toc_company_id', '!=', False)])
         for company in companies:
@@ -21,47 +21,48 @@ class InvoiceSync(models.Model):
             if not access_token:
                 continue
 
-            url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=FT&sort=-date"
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {access_token}"
-            }
+            url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=NC&sort=-date"
 
             try:
-                response = requests.get(url, headers=headers, timeout=30)
-                if response.status_code != 200:
-                    raise UserError(_(f"Error communicating with TOConline: {response.status_code} - {response.text}"))
+                response = self.env['toc.api'].toc_request(
+                    method='GET',
+                    url=url,
+                    access_token=access_token,
+                )
 
                 documents = response.json()
-                if not isinstance(documents, list):
-                    raise UserError(_("Unexpected format in TOConline response."))
 
-                toc_ft_docs = [
+                if not isinstance(documents, list):
+                    raise UserError(_("Unexpected TOConline response format."))
+
+                toc_nc_docs = [
                     doc for doc in documents
-                    if doc.get("document_type") == "FT" and doc.get("document_no") and doc.get("id")
+                    if doc.get("document_type") == "NC"
+                       and doc.get("document_no")
+                       and doc.get("date")
                 ]
 
-                toc_doc_nos = [doc["document_no"] for doc in toc_ft_docs]
+                toc_doc_nos = [doc.get("document_no") for doc in toc_nc_docs]
 
-                existing_invoices = self.env['account.move'].search([
-                    ('move_type', '=', 'out_invoice'),
-                    ('toc_document_no', 'in', toc_doc_nos),
-                    ('company_id', '=', company.id),
+                existing_credit_notes = self.env['account.move'].search([
+                    ('move_type', '=', 'out_refund'),
+                    ('toc_document_no_credit_note', 'in', toc_doc_nos)
                 ])
-                existing_toc_nos = set(existing_invoices.mapped('toc_document_no'))
+                existing_toc_nos = set(existing_credit_notes.mapped('toc_document_no_credit_note'))
 
-                toc_not_in_odoo = [doc for doc in toc_ft_docs if doc["document_no"] not in existing_toc_nos]
+                new_toc_docs = [doc for doc in toc_nc_docs if doc.get("document_no") not in existing_toc_nos]
 
-
-
-                for doc in toc_not_in_odoo:
+                for doc in new_toc_docs:
                     try:
-                        self.create_invoice_in_odoo(doc, company)
+                        self.create_credit_note_in_odoo(doc)
                     except Exception as e:
-                        _logger.error("Error creating invoice %s: %s", doc.get('document_no'), str(e))
+                        _logger.error("Error creating credit note %s: %s", doc.get("document_no"), str(e))
+
+                _logger.info("Successfully created %d new credit notes from TOConline for company %s.",
+                             len(new_toc_docs), company.name)
 
             except Exception as e:
-                _logger.error("Error during synchronization for company %s: %s", company.name, str(e), exc_info=True)
+                _logger.error("Error during credit note sync for company %s: %s", company.name, str(e), exc_info=True)
                 raise UserError(_(f"Error: {str(e)}"))
 
     def create_invoice_in_odoo(self, toc_document_data, company):
@@ -212,19 +213,16 @@ class InvoiceSync(models.Model):
             raise UserError(f"TOConline access token not found for company {company.name}.")
 
         url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
-
 
         try:
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return None
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=url,
+                access_token=access_token,
+            )
+            return response.json()
         except Exception as e:
-            _logger.error(f"Error connecting to TOConline for document ID{toc_document_id}: {str(e)}")
+            _logger.error(f"Error connecting to TOConline for document ID {toc_document_id}: {str(e)}")
             return None
+
 

@@ -3,6 +3,8 @@ import requests
 import json
 from odoo.exceptions import UserError
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+import logging
+_logger = logging.getLogger(__name__)
 
 
 class AccountPayment(models.Model):
@@ -16,14 +18,16 @@ class AccountPayment(models.Model):
         if not access_token:
             return
 
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
-
         endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
-        response = requests.get(endpoint, headers=headers)
-        if response.status_code != 200:
+
+        try:
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=endpoint,
+                access_token=access_token,
+            )
+        except Exception as e:
+            _logger.error(f"Error fetching commercial_sales_documents from TOConline: {str(e)}")
             return
 
         docs = response.json()
@@ -119,7 +123,7 @@ class AccountPayment(models.Model):
         existing_payment = self.env['account.payment'].search([
             ('amount', '=', amount),
             ('date', '=', receipt_date),
-            ('invoice_ids', 'in', invoice.ids)
+            ('invoice_ids', 'in', invoice.id)
         ], limit=1)
 
         if existing_payment:
@@ -146,7 +150,7 @@ class AccountPayment(models.Model):
 
             register_pay = self.env['account.payment.register'].with_context(
                 active_model='account.move',
-                active_ids=invoice.ids
+                active_ids=[invoice.id]  # lista com 1 ID
             ).create({
                 'payment_date': receipt_date,
                 'journal_id': journal.id,
@@ -175,21 +179,28 @@ class AccountPayment(models.Model):
 
     def get_receipt_data(self, receipt_id):
         access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
+        if not access_token:
+            _logger.error("Access token not found in system parameters.")
+            return None
+
         endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts/{receipt_id}"
 
-        response = requests.get(endpoint, headers=headers)
+        try:
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=endpoint,
+                access_token=access_token,
+            )
 
-        if response.status_code == 200:
             data = response.json()
+
             if isinstance(data, list) and len(data) > 0:
                 return data[0]
             elif isinstance(data, dict):
                 return data
             else:
                 return None
-        else:
+
+        except Exception as e:
+            _logger.error(f"Error fetching receipt {receipt_id} from TOConline: {str(e)}")
             return None

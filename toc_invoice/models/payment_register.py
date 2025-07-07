@@ -33,14 +33,11 @@ class AccountPaymentRegister(models.TransientModel):
             invoice = self.env['account.move'].browse(invoice_id)
             document_no = invoice.get_ID_invoice()
 
-
             doc_id = invoice.get_document_field_by_number(access_token, document_no, "id")
             user_id = invoice.get_document_field_by_number(access_token, document_no, "user_id")
             company_id = invoice.get_document_field_by_number(access_token, document_no, "company_id")
             customer_id = invoice.get_document_field_by_number(access_token, document_no, "customer_id")
             ammount = invoice.get_document_field_by_number(access_token, document_no, "gross_total")
-
-
 
             lines = [{
                 "cashed_vat_amount": None,
@@ -50,6 +47,7 @@ class AccountPaymentRegister(models.TransientModel):
                 "receivable_type": "Document",
                 "received_value": wizard.amount,
             }]
+
             payload = {
                 "company_id": company_id,
                 "country_id": partner.country_id.id if partner.country_id else 1,
@@ -72,16 +70,17 @@ class AccountPaymentRegister(models.TransientModel):
                 "user_id": user_id,
             }
 
-            headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            }
-
             endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts"
-            response = requests.post(endpoint, json=payload, headers=headers, timeout=120)
 
-            if response.status_code != 200:
-                raise UserError(f"Error sending payment: {response.text}")
+            try:
+                response = self.env['toc.api'].toc_request(
+                    method='POST',
+                    url=endpoint,
+                    payload=payload,
+                    access_token=access_token,
+                )
+            except Exception as e:
+                raise UserError(f"Error sending payment: {str(e)}")
 
             toc_receipt_data = response.json()
             receipt_id = toc_receipt_data.get("id")
@@ -94,5 +93,5 @@ class AccountPaymentRegister(models.TransientModel):
 
             self.env.cr.commit()
 
-
         return res
+
