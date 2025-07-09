@@ -6,6 +6,7 @@ from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 _logger = logging.getLogger(__name__)
 from odoo.exceptions import ValidationError
 from datetime import date
+from markupsafe import Markup
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -413,6 +414,12 @@ class AccountMove(models.Model):
         for move in self:
             move.action_send_invoice_to_toconline()
             move._handle_credit_note_posting()
+            if move.toc_status != 'sent' or move.checkbox != True:
+                move.write({
+                    'toc_status': 'error',
+                })
+                raise UserError(
+                    _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
         return res
 
     def action_send_invoice_to_toconline(self):
@@ -441,33 +448,51 @@ class AccountMove(models.Model):
 
         for record in invoices_to_send:
             with self.env.cr.savepoint():  # Savepoint por fatura
-                try:
-                    self._validate_partner_fields(record.partner_id, record)
-                    customer_id = self.get_or_create_customer_in_toconline(access_token, record.partner_id)
-                    lines, global_exemption_reason = self._build_lines(record, tax_region, filtered_taxes, access_token)
-                    payload = self._build_payload(record, lines, global_exemption_reason, tax_region)
+                self._validate_partner_fields(record.partner_id, record)
+                customer_id = self.get_or_create_customer_in_toconline(access_token, record.partner_id)
+                lines, global_exemption_reason = self._build_lines(record, tax_region, filtered_taxes, access_token)
+                payload = self._build_payload(record, lines, global_exemption_reason, tax_region)
 
-                    response =  self.env['toc.api'].toc_request(
-                        method='POST',
-                        url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents",
-                        payload=payload,
-                        access_token=access_token
-                    )
+                response = self.env['toc.api'].toc_request(
+                    method='POST',
+                    url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents",
+                    payload=payload,
+                    access_token=access_token
+                )
 
-                    self._handle_response(record, response)
-                    for records in self:
-                        if records.toc_status == 'sent':
-                            records.checkbox = True
+                self._handle_response(record, response)
+                for records in self:
+                    if records.toc_status == 'sent':
+                        records.checkbox = True
+                        response_data = response.json()
+                        public_link = response_data.get("public_link")
+                        if public_link:
+                            msg = _(
+                                "Invoice successfully sent to TOConline:<ul>"
+                                "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
+                                "</ul>"
+                            ).format(link=public_link)
 
-                except Exception as e:
-                    _logger.exception("Error while sending invoice %s to TOConline: %s", record.name, str(e))
-                    record.write({
-                        'toc_status': 'error',
-                    })
+                            record.message_post(body=Markup(msg))
 
     def _validate_partner_fields(self, partner, invoice):
-        if not all([partner.name, partner.street, partner.city, partner.country_id, partner.zip]):
-            raise UserError(_("Invoice %s customer is missing required fields.") % invoice.name)
+        missing_fields = []
+
+        if not partner.name:
+            missing_fields.append(_('Name'))
+        if not partner.street:
+            missing_fields.append(_('Street'))
+        if not partner.city:
+            missing_fields.append(_('City'))
+        if not partner.country_id:
+            missing_fields.append(_('Country'))
+        if not partner.zip:
+            missing_fields.append(_('ZIP Code'))
+
+        if missing_fields:
+            raise UserError(_(
+                "Invoice %s customer is missing the following required field(s): %s"
+            ) % (invoice.name, ", ".join(missing_fields)))
 
     def _build_lines(self, record, tax_region, filtered_taxes, access_token):
         lines = []
@@ -606,6 +631,24 @@ class AccountMove(models.Model):
                 'state': 'cancel'
             })
             self.env.cr.commit()
+            try:
+                response_data = response.json()
+                attributes = response_data.get('data', {}).get('attributes', {})
+                public_link = attributes.get("public_link")
+
+                if public_link:
+                    msg = _(
+                        "Invoice cancelled on TOConline:<ul>"
+                        "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
+                        "</ul>"
+                    ).format(link=public_link)
+
+                    record.message_post(body=Markup(msg))
+            except Exception as e:
+                    raise UserError(_(
+                        "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
+                        "Technical error: %s"
+                    ) % str(e))
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
         """
