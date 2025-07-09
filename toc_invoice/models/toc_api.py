@@ -4,7 +4,7 @@ import base64
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 from odoo.exceptions import UserError
-
+import json
 from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
 import logging
 _logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class TocAPI(models.AbstractModel):
             response = requests.request(method, url, json=payload, headers=headers, timeout=timeout)
 
             _logger.debug("Response [%s]: %s", response.status_code, response.text)
+            self._handle_toc_response_errors(response)
             response.raise_for_status()
             return response
 
@@ -53,6 +54,46 @@ class TocAPI(models.AbstractModel):
         except requests.exceptions.RequestException as e:
             _logger.exception("TOConline error on %s %s", method.upper(), url)
             raise UserError(_("Error communicating with TOConline: %s") % str(e))
+
+    def _handle_toc_response_errors(self, response):
+        """
+        Handles common HTTP errors returned by TOConline.
+        Raises UserError with a descriptive message including the response text.
+        """
+        error_text = response.text or "No additional details provided."
+        try:
+            data = json.loads(response.text)
+            if isinstance(data, dict):
+                if "error" in data:
+                    error_text = data["error"]
+                elif "message" in data:
+                    error_text = data["message"]
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        if response.status_code == 400:
+            raise UserError(
+                _("Bad Request (400): Check the data being sent to TOConline.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 401:
+            raise UserError(_("Unauthorized (401): Invalid or expired access token.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 403:
+            raise UserError(
+                _("Forbidden (403): You do not have permission to access this resource.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 404:
+            raise UserError(
+                _("Not Found (404): The requested resource does not exist on TOConline.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 409:
+            raise UserError(
+                _("Conflict (409): The request could not be completed due to a conflict.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 422:
+            raise UserError(
+                _("Unprocessable Entity (422): Invalid input data format or validation failed.\n\nDetails:\n%s") % error_text)
+        elif response.status_code == 500:
+            raise UserError(
+                _("Internal Server Error (500): TOConline encountered an error. Try again later.\n\nDetails:\n%s") % error_text)
+        elif response.status_code >= 400:
+            raise UserError(
+                _("HTTP Error %s: %s\n\nDetails:\n%s") % (response.status_code, response.reason, error_text))
 
     def get_authorization_url(self, company=None):
         company = (company or self.env.company).sudo()
