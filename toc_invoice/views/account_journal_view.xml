@@ -1,0 +1,13 @@
+<odoo>
+    <record id="view_account_journal_form_inherit_toconline" model="ir.ui.view">
+        <field name="name">account.journal.form.toconline</field>
+        <field name="model">account.journal</field>
+        <field name="inherit_id" ref="account.view_account_journal_form"/>
+        <field name="arch" type="xml">
+            <!-- Add the field after the 'code' field as an example -->
+            <field name="code" position="after">
+                <field name="send_to_toconline"/>
+            </field>
+        </field>
+    </record>
+</odoo>
