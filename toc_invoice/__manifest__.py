@@ -10,6 +10,7 @@
         'security/ir.model.access.csv',
         'views/toc_invoice.xml',
         'views/res_config_settings.xml',
+        'views/account_journal_view.xml',
         'views/res_company_views.xml',
         'views/res_partner_views.xml',
         'wizard/toc_account_move_reversal.xml',

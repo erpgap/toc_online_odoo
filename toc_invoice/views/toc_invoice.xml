@@ -25,7 +25,7 @@
                         type="object"
                         string="Send Invoice TOConline"
                         class="btn btn-primary"
-                        invisible="state != 'posted' or toc_status == 'sent' or checkbox != True or toc_status == 'cancelled'"/>
+                        invisible="1"/>
             </xpath>
 
             <xpath expr="//header" position="inside">
@@ -42,7 +42,7 @@
                 <button name="open_cancel_invoice_wizard" string="Cancel" type="object" groups="account.group_account_invoice"
                         data-hotkey="x"
                         class="btn btn-outline-danger"
-                       invisible="not id or state == 'cancel' or toc_status != 'sent' or move_type == 'entry'"/>
+                       invisible="not id or state == 'cancel' or state == 'draft' or move_type == 'entry'"/>
             </xpath>
 
             <xpath expr="//button[@name='button_draft']" position="replace">

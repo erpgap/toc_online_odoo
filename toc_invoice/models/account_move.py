@@ -412,14 +412,28 @@ class AccountMove(models.Model):
     def action_post(self):
         res = super().action_post()
         for move in self:
-            move.action_send_invoice_to_toconline()
-            move._handle_credit_note_posting()
-            if move.toc_status != 'sent' or move.checkbox != True:
-                move.write({
-                    'toc_status': 'error',
-                })
-                raise UserError(
-                    _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
+            previous_invoice = self.env['account.move'].search([
+                ('id', '=', move.id - 1),
+                ('move_type', '=', move.move_type),
+                ('journal_id', '=', move.journal_id.id),
+                ('company_id', '=', move.company_id.id),
+                ('state', '=', 'draft'),
+            ], limit=1)
+
+            if previous_invoice:
+                raise UserError(_(
+                    "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
+                ) % previous_invoice.name)
+
+            if move.journal_id.send_to_toconline:
+                move.action_send_invoice_to_toconline()
+                move._handle_credit_note_posting()
+                if move.toc_status != 'sent' or move.checkbox != True:
+                    move.write({
+                        'toc_status': 'error',
+                    })
+                    raise UserError(
+                        _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
         return res
 
     def action_send_invoice_to_toconline(self):
@@ -580,75 +594,92 @@ class AccountMove(models.Model):
         Cancels the invoice in TOConline by setting its status to 4 (voided).Requires the user to input a reason.
         """
         for record in self:
-            if not record.toc_document_id:
-                raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
 
-            if record.toc_status != 'sent':
-                raise UserError(_("Only invoices already sent to TOConline can be canceled."))
+            newer_invoice = self.env['account.move'].search([
+                ('id', '>', record.id),
+                ('move_type', '=', record.move_type),
+                ('journal_id', '=', record.journal_id.id),
+                ('company_id', '=', record.company_id.id),
+                ('state', 'in', ['posted', 'cancel']),
+            ], order='id asc', limit=1)
 
-            reason = self.env.context.get('cancel_reason')
-            if not reason:
-                raise UserError(_("You must provide a reason to cancel the invoice."))
+            if newer_invoice:
+                raise UserError(_(
+                    "You cannot cancel this invoice (%s) because a more recent invoice (%s) already exists and has been posted or cancelled."
+                ) % (record.display_name, newer_invoice.display_name))
 
-            access_token = self.env['toc.api'].get_access_token()
-            if not access_token:
-                raise UserError(_("Could not obtain access token for TOConline."))
+            if record.journal_id.send_to_toconline:
+                if not record.toc_document_id:
+                    raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
 
-            cancel_payload = {
-                "data": {
-                    "type": "commercial_sales_documents",
-                    "id": str(record.toc_document_id),
-                    "attributes": {
-                        "status": 4,
-                        "voided_reason": reason
+                if record.toc_status != 'sent':
+                    raise UserError(_("Only invoices already sent to TOConline can be canceled."))
+
+                reason = self.env.context.get('cancel_reason')
+                if not reason:
+                    raise UserError(_("You must provide a reason to cancel the invoice."))
+
+                access_token = self.env['toc.api'].get_access_token()
+                if not access_token:
+                    raise UserError(_("Could not obtain access token for TOConline."))
+
+                cancel_payload = {
+                    "data": {
+                        "type": "commercial_sales_documents",
+                        "id": str(record.toc_document_id),
+                        "attributes": {
+                            "status": 4,
+                            "voided_reason": reason
+                        }
                     }
                 }
-            }
 
-            url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
-            response = self.env['toc.api'].toc_request(
-                    method='PATCH',
-                    url=url,
-                    payload=cancel_payload,
-                    access_token=access_token
-                )
+                url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+                response = self.env['toc.api'].toc_request(
+                        method='PATCH',
+                        url=url,
+                        payload=cancel_payload,
+                        access_token=access_token
+                    )
 
 
-            if response.status_code != 200:
-                raise UserError(
-                    _(f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}")
-                )
-            response_data = response.json()
-
-            attributes = response_data.get('data', {}).get('attributes', {})
-            reason = attributes.get('voided_reason', '')
-            date = attributes.get('created_at', '')
-
-            record.write({
-                'toc_status': 'cancelled',
-                'cancellation_reason' : reason,
-                'cancellation_date' : date,
-                'state': 'cancel'
-            })
-            self.env.cr.commit()
-            try:
+                if response.status_code != 200:
+                    raise UserError(
+                        _(f"Failed to cancel invoice on TOConline. Status: {response.status_code}, Response: {response.text}")
+                    )
                 response_data = response.json()
+
                 attributes = response_data.get('data', {}).get('attributes', {})
-                public_link = attributes.get("public_link")
+                reason = attributes.get('voided_reason', '')
+                date = attributes.get('created_at', '')
 
-                if public_link:
-                    msg = _(
-                        "Invoice cancelled on TOConline:<ul>"
-                        "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
-                        "</ul>"
-                    ).format(link=public_link)
+                record.write({
+                    'toc_status': 'cancelled',
+                    'cancellation_reason' : reason,
+                    'cancellation_date' : date,
+                    'state': 'cancel'
+                })
+                self.env.cr.commit()
+                try:
+                    response_data = response.json()
+                    attributes = response_data.get('data', {}).get('attributes', {})
+                    public_link = attributes.get("public_link")
 
-                    record.message_post(body=Markup(msg))
-            except Exception as e:
-                    raise UserError(_(
-                        "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
-                        "Technical error: %s"
-                    ) % str(e))
+                    if public_link:
+                        msg = _(
+                            "Invoice cancelled on TOConline:<ul>"
+                            "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
+                            "</ul>"
+                        ).format(link=public_link)
+
+                        record.message_post(body=Markup(msg))
+                except Exception as e:
+                        raise UserError(_(
+                            "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
+                            "Technical error: %s"
+                        ) % str(e))
+            else:
+                record.state = 'cancel'
 
     def get_customer_id(self, access_token, tax_number=None, email=None):
         """
@@ -722,7 +753,8 @@ class AccountMove(models.Model):
     def _handle_credit_note_posting(self):
         for move in self:
             if move.move_type == 'out_refund' and move.reversed_entry_id:
-                move._send_credit_note_to_toconline()
+                if move.journal_id.send_to_toconline:
+                    move._send_credit_note_to_toconline()
 
     def _send_credit_note_to_toconline(self):
         self.ensure_one()
@@ -833,6 +865,19 @@ class AccountMove(models.Model):
         })
 
         self._cr.commit()
+
+        for records in self:
+            if records.toc_status == 'sent':
+                response_data = response.json()
+                public_link = response_data.get("public_link")
+                if public_link:
+                    msg = _(
+                        "Invoice successfully sent to TOConline:<ul>"
+                        "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
+                        "</ul>"
+                    ).format(link=public_link)
+
+                    records.message_post(body=Markup(msg))
 
     def write(self, vals):
         restricted_fields = {
