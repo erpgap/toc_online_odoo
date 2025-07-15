@@ -7,6 +7,9 @@ _logger = logging.getLogger(__name__)
 from odoo.exceptions import ValidationError
 from datetime import date
 from markupsafe import Markup
+import requests
+import base64
+from odoo.exceptions import UserError
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -96,10 +99,11 @@ class AccountMove(models.Model):
         today = date.today()
         for record in self:
             if record.toc_status != 'sent' and record.toc_status != 'cancelled':
-                if record.invoice_date and record.invoice_date < today:
-                    raise ValidationError("The invoice date must be today or a future date.")
-                if record.invoice_date_due and record.invoice_date_due < today:
-                    raise ValidationError("The due date must be today or a future date.")
+                pass
+                # if record.invoice_date and record.invoice_date < today:
+                #     raise ValidationError("The invoice date must be today or a future date.")
+                # if record.invoice_date_due and record.invoice_date_due < today:
+                #     raise ValidationError("The due date must be today or a future date.")
 
     @api.constrains('state')
     def _check_state_invoice(self):
@@ -489,6 +493,10 @@ class AccountMove(models.Model):
 
                             record.message_post(body=Markup(msg))
 
+                        toc_document_id = response_data.get("id")
+                        if toc_document_id:
+                            self.download_and_attach_invoice_pdf(record, toc_document_id, access_token)
+
     def _validate_partner_fields(self, partner, invoice):
         missing_fields = []
 
@@ -673,6 +681,11 @@ class AccountMove(models.Model):
                         ).format(link=public_link)
 
                         record.message_post(body=Markup(msg))
+
+                    toc_document_id = str(record.toc_document_id)
+                    if toc_document_id:
+                        self.download_and_attach_invoice_pdf(record, toc_document_id, access_token)
+
                 except Exception as e:
                         raise UserError(_(
                             "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
@@ -878,6 +891,9 @@ class AccountMove(models.Model):
                     ).format(link=public_link)
 
                     records.message_post(body=Markup(msg))
+                toc_document_id = response_data.get("id")
+                if toc_document_id:
+                    self.download_and_attach_invoice_pdf(records, toc_document_id, access_token)
 
     def write(self, vals):
         restricted_fields = {
@@ -892,6 +908,114 @@ class AccountMove(models.Model):
                         _("This invoice has already been sent to TOConline and can no longer be edited. Please cancel it or create a credit note."))
 
         return super().write(vals)
+
+    def download_and_attach_invoice_pdf(self, record, toc_document_id, access_token):
+        """
+        Faz o download do PDF da fatura da TOConline e anexa ao registro da fatura no Odoo.
+        """
+        url_api = f"{TOC_BASE_URL}/api/url_for_print/{toc_document_id}?filter[type]=Document&filter[copies]=1"
+
+
+        response = self.env['toc.api'].toc_request(
+            method='GET',
+            url=url_api,
+            access_token=access_token,
+        )
+
+        if response.status_code != 200:
+            raise UserError(_("Failed to get PDF URL from TOConline."))
+
+        try:
+            url_data = response.json()["data"]["attributes"]["url"]
+            pdf_url = f"{url_data['scheme']}://{url_data['host']}{url_data['path']}"
+        except Exception as e:
+            raise UserError(_("Error parsing PDF URL response: %s") % str(e))
+
+        pdf_response = requests.get(pdf_url)
+        if pdf_response.status_code != 200:
+            raise UserError(_("Failed to download PDF from TOConline."))
+
+        self.env['ir.attachment'].create({
+            'name': f"Fatura_{record.name}.pdf",
+            'res_model': 'account.move',
+            'res_id': record.id,
+            'type': 'binary',
+            'datas': base64.b64encode(pdf_response.content),
+            'mimetype': 'application/pdf',
+        })
+
+        record.message_post(body=Markup(
+            _("PDF successfully downloaded and attached to the invoice.")
+        ))
+
+    def action_send_invoice_with_attachment(self):
+        self.ensure_one()
+
+        partner_email = self.partner_id.email
+        if not partner_email:
+            raise UserError(_("The customer does not have an email address."))
+
+        template = self.env.ref('account.email_template_edi_invoice', raise_if_not_found=False)
+        if not template:
+            raise UserError(_("Invoice email template not found."))
+
+        attachment = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_id', '=', self.id),
+        ], order='id desc', limit=1)
+
+        mail_values = {
+            'email_to': partner_email,
+            'subject': f"{self.name} - Fatura",
+            'body_html': template.body_html,
+            'model': 'account.move',
+            'res_id': self.id,
+            'auto_delete': False,
+        }
+
+        if attachment:
+            mail_values['attachment_ids'] = [(4, attachment.id)]
+        else:
+            mail_values['attachment_ids'] = []
+
+        mail = self.env['mail.mail'].create(mail_values)
+        mail.send()
+
+        self.message_post(body=_("Invoice email successfully sent to the customer."))
+
+    def action_invoice_sent(self):
+        self.ensure_one()
+
+        attachment = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_id', '=', self.id),
+        ], order='id desc', limit=1)
+
+        report_action = super().action_invoice_sent()
+        if attachment:
+            report_action.setdefault('context', {})
+            report_action['context'].update({
+                'default_attachment_ids': [(6, 0, [attachment.id])],  # Limpa e adiciona só esse
+            })
+
+        return report_action
+
+    def action_print_toc_or_standard(self):
+        self.ensure_one()
+        attachment = self.env['ir.attachment'].search([
+            ('res_model', '=', 'account.move'),
+            ('res_id', '=', self.id),
+        ], order='id desc', limit=1)
+
+        if attachment:
+            return {
+                'type': 'ir.actions.act_url',
+                'url': f'/web/content/{attachment.id}?download=true',
+                'target': 'new',
+            }
+        else:
+            return self.env.ref('account.account_invoices').report_action(self)
+
 
 
 

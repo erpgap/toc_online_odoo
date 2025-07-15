@@ -39,16 +39,31 @@
             </xpath>
 
             <xpath expr="//button[@name='button_cancel']" position="replace">
-                <button name="open_cancel_invoice_wizard" string="Cancel" type="object" groups="account.group_account_invoice"
+                <button name="open_cancel_invoice_wizard" string="Cancel" type="object"
+                        groups="account.group_account_invoice"
                         data-hotkey="x"
                         class="btn btn-outline-danger"
-                       invisible="not id or state == 'cancel' or state == 'draft' or move_type == 'entry'"/>
+                        invisible="not id or state == 'cancel' or state == 'draft' or move_type == 'entry'"/>
+
+                <button name="action_print_toc_or_standard"
+                        type="object"
+                        string="Imprimir Fatura"
+                        class="btn-primary"/>
+
             </xpath>
 
             <xpath expr="//button[@name='button_draft']" position="replace">
                 <button name="button_draft" string="Reset to Draft" type="object" groups="account.group_account_invoice"
                         invisible="1" data-hotkey="r"/>
             </xpath>
+
+            <xpath expr="//button[@name='action_print_pdf']" position="replace">
+                <button name="action_print_pdf"
+                        type="object"
+                        invisible="1"
+                        string="Print"/>
+            </xpath>
+
 
             <xpath expr="//button[@name='button_cancel']" position="replace">
                 <button name="button_cancel" string="Cancel Entry" type="object" groups="account.group_account_invoice"
