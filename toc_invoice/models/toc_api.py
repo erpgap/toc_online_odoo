@@ -1,14 +1,16 @@
-import requests
-from odoo import models, fields, _
 import base64
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime, timedelta
-from odoo.exceptions import UserError
 import json
-from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
 import logging
-_logger = logging.getLogger(__name__)
+import requests
+from datetime import datetime, timedelta
+from urllib.parse import urlparse, parse_qs
 
+from odoo import models, fields, _
+from odoo.exceptions import UserError
+
+from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
+
+_logger = logging.getLogger(__name__)
 
 TOC_TIMEOUT = 120
 
@@ -102,7 +104,6 @@ class TocAPI(models.AbstractModel):
 
         if not client_id or not client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured."))
-        print(auth_url, redirect_uri, client_id)
         url_aux = f"{auth_url}/auth?"
         params = {
             "client_id": client_id,

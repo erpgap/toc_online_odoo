@@ -1,80 +1,18 @@
-from odoo import models, fields, api, _
+import logging
 import requests
 import json
+
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError
+
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-import logging
+
 _logger = logging.getLogger(__name__)
+
 
 
 class AccountPayment(models.Model):
     _inherit = 'account.payment'
-
-    @api.model
-    def sync_payments_from_toc(self):
-        print(" Start TOC Sync --> Odoo")
-
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
-        if not access_token:
-            return
-
-        endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents"
-
-        try:
-            response = self.env['toc.api'].toc_request(
-                method='GET',
-                url=endpoint,
-                access_token=access_token,
-            )
-        except Exception as e:
-            _logger.error(f"Error fetching commercial_sales_documents from TOConline: {str(e)}")
-            return
-
-        docs = response.json()
-        missing_receipts = []
-        processed_receipts = set()
-
-        for doc in docs:
-            invoice_id = doc.get("id")
-            receipt_ids = doc.get("receipts_ids") or []
-            document_no = doc.get("document_no") or "N/A"
-
-            for rid in receipt_ids:
-                str_rid = str(rid)
-                if str_rid in processed_receipts:
-                    continue
-
-                all_invoices = self.env['account.move'].search([
-                    ('toc_receipt_ids', '!=', False)
-                ])
-                already_registered = False
-
-                for inv in all_invoices:
-                    try:
-                        ids_list = json.loads(inv.toc_receipt_ids or "[]")
-                        if isinstance(ids_list, list) and str_rid in [str(x) for x in ids_list]:
-                            already_registered = True
-                            break
-                    except json.JSONDecodeError:
-                        continue
-
-                if already_registered:
-                    continue
-
-                missing = {
-                    'receipt_id': rid,
-                    'invoice_id': invoice_id,
-                    'document_no': document_no,
-                }
-
-                created = self.create_payment_for_missing_receipt(missing)
-
-                if created:
-                    processed_receipts.add(str_rid)
-                    missing_receipts.append(missing)
-
-        print(" Synchronization completed.")
-        return missing_receipts
 
     def create_payment_for_missing_receipt(self, missing_receipt):
 
@@ -94,7 +32,6 @@ class AccountPayment(models.Model):
             if not isinstance(toc_receipt_ids, list):
                 toc_receipt_ids = [toc_receipt_ids]
         except json.JSONDecodeError as e:
-            print(f"Error loading receipt IDs: {e}")
             toc_receipt_ids = []
 
         receipt_id_str = str(missing_receipt['receipt_id'])
@@ -174,7 +111,6 @@ class AccountPayment(models.Model):
             return True
 
         except Exception as e:
-            print(f"Error creating payment: {e}")
             return False
 
     def get_receipt_data(self, receipt_id):

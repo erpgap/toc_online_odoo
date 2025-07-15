@@ -1,7 +1,9 @@
-from odoo import models, fields, api, _
 import requests
 from datetime import timedelta
+
+from odoo import models, fields, api, _
 from odoo.addons.toc_invoice.utils import token_url
+
 
 
 class ResConfigSettings(models.TransientModel):

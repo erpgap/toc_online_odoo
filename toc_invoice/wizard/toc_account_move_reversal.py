@@ -86,7 +86,6 @@ class CreditNoteWizard(models.TransientModel):
                 return None
 
         except requests.exceptions.RequestException as e:
-            print(f"Error connecting to API: {e}")
             return None
 
 

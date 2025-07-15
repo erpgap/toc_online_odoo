@@ -1,15 +1,17 @@
-import requests
-from odoo import models, fields, api, _
-from odoo.exceptions import UserError
 import logging
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-_logger = logging.getLogger(__name__)
-from odoo.exceptions import ValidationError
-from datetime import date
-from markupsafe import Markup
 import requests
 import base64
-from odoo.exceptions import UserError
+from datetime import date
+
+from markupsafe import Markup
+
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError, ValidationError
+
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+
+_logger = logging.getLogger(__name__)
+
 
 class AccountMove(models.Model):
     _inherit = 'account.move'
@@ -99,11 +101,10 @@ class AccountMove(models.Model):
         today = date.today()
         for record in self:
             if record.toc_status != 'sent' and record.toc_status != 'cancelled':
-                pass
-                # if record.invoice_date and record.invoice_date < today:
-                #     raise ValidationError("The invoice date must be today or a future date.")
-                # if record.invoice_date_due and record.invoice_date_due < today:
-                #     raise ValidationError("The due date must be today or a future date.")
+                if record.invoice_date and record.invoice_date < today:
+                    raise ValidationError("The invoice date must be today or a future date.")
+                if record.invoice_date_due and record.invoice_date_due < today:
+                    raise ValidationError("The due date must be today or a future date.")
 
     @api.constrains('state')
     def _check_state_invoice(self):
@@ -326,7 +327,6 @@ class AccountMove(models.Model):
                     return customers[0]["id"]
 
         create_url = f"{TOC_BASE_URL}/api/customers"
-        print("------ create_url:", create_url)
         customer_payload = {
             "data": {
                 "type": "customers",
@@ -410,8 +410,6 @@ class AccountMove(models.Model):
             return product_id
         else:
             raise UserError(_("Error creating product in TOConline: %s") % response.text)
-
-    #################################  Overriding the action_post method to include integration with TOConline ###################################################################################################
 
     def action_post(self):
         res = super().action_post()
@@ -594,8 +592,6 @@ class AccountMove(models.Model):
             toc_company_id = data.get('company_id')
             if toc_company_id:
                 self.env.company.toc_company_id = toc_company_id
-
-    ####################################################################################################################################
 
     def action_cancel_invoice_toconline(self):
         """

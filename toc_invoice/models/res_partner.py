@@ -1,6 +1,6 @@
 from odoo import models, fields, api, _
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 from odoo.exceptions import UserError
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'

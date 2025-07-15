@@ -1,70 +1,19 @@
-from odoo import models, api, fields, _
-from datetime import datetime, date
-from odoo.exceptions import UserError
 import logging
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+from datetime import datetime, date
 import requests
 
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError
+
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+
 _logger = logging.getLogger(__name__)
+
 
 
 class CreditNoteSync(models.Model):
     _name = 'credit.note.sync'
     _description = 'Sync Credit Notes from TOConline'
-
-    @api.model
-    def sync_credit_notes_from_toc(self):
-        """Fetch credit notes from TOConline, check which are missing in Odoo, and create them."""
-
-        companies = self.env['res.company'].search([('toc_company_id', '!=', False)])
-        for company in companies:
-            access_token = self.env['toc.api'].get_access_token(company=company)
-            if not access_token:
-                continue
-
-            url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?filter[document_type]=NC&sort=-date"
-
-            try:
-                response = self.env['toc.api'].toc_request(
-                    method='GET',
-                    url=url,
-                    access_token=access_token,
-                )
-
-                documents = response.json()
-
-                if not isinstance(documents, list):
-                    raise UserError(_("Unexpected TOConline response format."))
-
-                toc_nc_docs = [
-                    doc for doc in documents
-                    if doc.get("document_type") == "NC"
-                       and doc.get("document_no")
-                       and doc.get("date")
-                ]
-
-                toc_doc_nos = [doc.get("document_no") for doc in toc_nc_docs]
-
-                existing_credit_notes = self.env['account.move'].search([
-                    ('move_type', '=', 'out_refund'),
-                    ('toc_document_no_credit_note', 'in', toc_doc_nos)
-                ])
-                existing_toc_nos = set(existing_credit_notes.mapped('toc_document_no_credit_note'))
-
-                new_toc_docs = [doc for doc in toc_nc_docs if doc.get("document_no") not in existing_toc_nos]
-
-                for doc in new_toc_docs:
-                    try:
-                        self.create_credit_note_in_odoo(doc)
-                    except Exception as e:
-                        _logger.error("Error creating credit note %s: %s", doc.get("document_no"), str(e))
-
-                _logger.info("Successfully created %d new credit notes from TOConline for company %s.",
-                             len(new_toc_docs), company.name)
-
-            except Exception as e:
-                _logger.error("Error during credit note sync for company %s: %s", company.name, str(e), exc_info=True)
-                raise UserError(_(f"Error: {str(e)}"))
 
     def create_credit_note_in_odoo(self, toc_document_data):
         """Create a credit note in Odoo from a single TOConline document."""

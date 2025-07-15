@@ -47,7 +47,7 @@
 
                 <button name="action_print_toc_or_standard"
                         type="object"
-                        string="Imprimir Fatura"
+                        string="Print Invoice"
                         class="btn-primary"/>
 
             </xpath>
