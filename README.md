@@ -32,3 +32,53 @@ Integrates Odoo with TOConline for certified invoicing in Portugal: create, canc
 This module allows communication between Odoo and the TOConline platform, which is Portuguese, therefore containing only Portuguese VAT values.  
 Depending on your company's location and operations, not all VAT rates may be valid for use. For example, a company based in mainland Portugal should not use Azores or Madeira VAT rates.  
 Please ensure that your company's VAT settings in Odoo reflect the correct region to avoid compliance issues when communicating with TOConline.
+
+---
+
+## Installation and Configuration
+
+### Installation
+
+1. Copy or clone the module into your Odoo custom addons folder:  
+
+```bash
+git clone https://github.com/erpgap/toc_online_odoo.git
+```
+2. Update the apps list in Odoo and install the TOConline Integration module.
+
+### Configuration
+
+After installation, go to:
+
+Fill in the following information:
+
+- **TOConline Client ID**
+- **TOConline Client Secret**
+- **TOConline Company ID**
+
+Save the configuration and authenticate to enable the connection.
+
+---
+
+## How to Obtain TOConline API Credentials
+
+To use this integration, you must obtain your company's credentials directly from the TOConline platform.
+
+Steps to obtain your credentials:
+
+1. Access your TOConline account:  
+   https://app.toconline.pt
+
+2. In the left menu, go to **Configurações Empresa**.
+
+3. Open the **Dados da API** section.
+
+4. Copy the following information:
+   - Client ID
+   - Client Secret (Generated automatically — keep it secure)
+   - Company ID 
+
+5. Enter this information in the TOConline Configuration section in Odoo.
+
+⚠️ **Important:** The Client Secret is confidential and must not be shared.  
+Without these credentials, Odoo will not be able to connect with TOConline.
