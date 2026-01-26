@@ -8,3 +8,4 @@ from . import payment
 from . import invoice_synchronization
 from . import credit_note_sync
 from . import account_journal
+from . import toc_vat_exemption
