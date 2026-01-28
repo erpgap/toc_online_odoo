@@ -9,6 +9,7 @@ from odoo import models, fields, _
 from odoo.exceptions import UserError
 
 from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
+from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -20,6 +21,27 @@ class TocAPI(models.AbstractModel):
 
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
+
+    def fetch_vat_exemption_reasons(self):
+        access_token = self.get_access_token()
+        url = f"{TOC_BASE_URL}/api/tax_descriptors"
+
+        try:
+            response = self.toc_request(
+                method='GET',
+                url=url,
+                access_token=access_token
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data', [])
+
+            _logger.warning(f"TOConline API ({response.status_code}): {response.text}")
+            return []
+        except Exception as e:
+            _logger.error(f"Erro ao ligar à TOConline: {str(e)}")
+            return []
 
     def toc_request(self, method, url, payload=None, access_token=None, timeout=TOC_TIMEOUT):
         """

@@ -8,6 +8,7 @@
     'depends': ['base', 'web', 'contacts', 'product', 'account' , 'l10n_pt_vat' ],
     'data': [
         'security/ir.model.access.csv',
+        'data/ir_cron_data.xml',
         'views/toc_invoice.xml',
         'views/res_config_settings.xml',
         'views/account_journal_view.xml',
