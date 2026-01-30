@@ -9,6 +9,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
+from datetime import timedelta
 
 _logger = logging.getLogger(__name__)
 
@@ -412,6 +413,11 @@ class AccountMove(models.Model):
             raise UserError(_("Error creating product in TOConline: %s") % response.text)
 
     def action_post(self):
+        access_token = self.env['toc.api'].get_access_token()
+        for move in self:
+            if move.state == 'draft' and move.journal_id.send_to_toconline:
+                move._adjust_date_for_chronology(access_token)
+
         res = super().action_post()
         for move in self:
             previous_invoice = self.env['account.move'].search([
@@ -439,11 +445,15 @@ class AccountMove(models.Model):
         return res
 
     def action_send_invoice_to_toconline(self):
-        invoices_to_send = self.env['account.move'].search([
-            ('state', '=', 'posted'),
-            ('toc_status', '=', 'draft'),
-            ('move_type', '=', 'out_invoice'),
-        ])
+
+        if self:
+            invoices_to_send = self
+        else:
+            invoices_to_send = self.env['account.move'].search([
+                ('state', '=', 'posted'),
+                ('toc_status', '=', 'draft'),
+                ('move_type', '=', 'out_invoice'),
+            ])
 
         access_token = self.env['toc.api'].get_access_token()
         if not access_token:
@@ -464,6 +474,7 @@ class AccountMove(models.Model):
 
         for record in invoices_to_send:
             with self.env.cr.savepoint():  # Savepoint por fatura
+                # record._adjust_date_for_chronology(access_token)
                 self._validate_partner_fields(record.partner_id, record)
                 customer_id = self.get_or_create_customer_in_toconline(access_token, record.partner_id)
                 lines, global_exemption_reason = self._build_lines(record, tax_region, filtered_taxes, access_token)
@@ -545,15 +556,65 @@ class AccountMove(models.Model):
 
         return lines, global_exemption_reason
 
+    def _get_last_toc_document_date(self, access_token):
+        """ Consulta a TOConline para obter a data do último documento emitido """
+        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?sort=-date&page[size]=1"
+        try:
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=url,
+                access_token=access_token
+            )
+            if response.status_code == 200:
+                res_data = response.json()
+                items = res_data if isinstance(res_data, list) else res_data.get('data', [])
+
+                if items and len(items) > 0:
+                    last_date_str = items[0].get('date')
+                    _logger.info("Última data encontrada na TOConline: %s", last_date_str)
+                    return fields.Date.from_string(last_date_str)
+        except Exception as e:
+            _logger.error("Falha ao validar cronologia TOConline: %s", str(e))
+        return None
+
+    def _adjust_date_for_chronology(self, access_token):
+        self.ensure_one()
+        last_toc_date = self._get_last_toc_document_date(access_token)
+
+        if last_toc_date and self.invoice_date and self.invoice_date < last_toc_date:
+            _logger.warning("Ajustando data da fatura %s por integridade cronológica.", self.name)
+
+            days_diff = (self.invoice_date_due - self.invoice_date).days if self.invoice_date_due else 0
+
+            if self.state == 'posted':
+                self.with_context(check_move_validity=False).sudo().write({
+                    'invoice_date': last_toc_date,
+                    'invoice_date_due': last_toc_date + timedelta(days=days_diff)
+                })
+            else:
+                self.write({
+                    'invoice_date': last_toc_date,
+                    'invoice_date_due': last_toc_date + timedelta(days=days_diff)
+                })
+
+            self.message_post(
+                body=_("Data ajustada automaticamente para %s para cumprir a cronologia TOConline.") % last_toc_date)
+
     def _build_payload(self, record, lines, exemption_reason, tax_region):
         currency_obj = record.currency_id
         company_currency = record.company_id.currency_id
-        date = record.invoice_date or fields.Date.today()
+
+        invoice_date_to_send = record.invoice_date or fields.Date.today()
+
+        due_date = record.invoice_date_due or invoice_date_to_send
+        if due_date < invoice_date_to_send:
+            due_date = invoice_date_to_send
 
         return {
             "document_type": "FT",
+            "date": invoice_date_to_send.strftime("%Y-%m-%d"),
+            "due_date": due_date.strftime("%Y-%m-%d"),
             "status": 0,
-            "date": date.strftime("%Y-%m-%d"),
             "finalize": 0,
             "customer_tax_registration_number": record.partner_id.vat.strip() if record.partner_id.vat else "Unknown",
             "customer_business_name": record.partner_id.name,
@@ -562,12 +623,12 @@ class AccountMove(models.Model):
             "customer_city": record.partner_id.city or "",
             "customer_tax_country_region": tax_region,
             "customer_country": record.partner_id.country_id.code or "",
-            "due_date": record.invoice_date_due.strftime("%Y-%m-%d") if record.invoice_date_due else "",
             "vat_included_prices": getattr(record.journal_id, 'vat_included_prices', False),
             "operation_country": tax_region,
             "currency_iso_code": currency_obj.name,
-            "currency_conversion_rate": currency_obj._get_conversion_rate(currency_obj, company_currency,
-                                                                          record.company_id, date),
+            "currency_conversion_rate": currency_obj._get_conversion_rate(
+                currency_obj, company_currency, record.company_id, invoice_date_to_send
+            ),
             "apply_retention_when_paid": True,
             "notes": "Notes to the document",
             "tax_exemption_reason_id": exemption_reason,
