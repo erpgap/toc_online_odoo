@@ -22,6 +22,25 @@ class TocAPI(models.AbstractModel):
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
 
+    def get_tax_exemption_reason_id(self, access_token, reason_code):
+        response = self.toc_request(
+            method="GET",
+            url=f"{TOC_BASE_URL}/tax_exemption_reasons?filter[code]={reason_code}",
+            access_token=access_token,
+        )
+
+        if response.status_code != 200:
+            raise UserError(
+                _("Erro ao buscar motivo de isenção no TOConline: %s")
+                % response.text
+            )
+
+        data = response.json().get("data", [])
+        if not data:
+            return None
+
+        return data[0]["id"]
+
     def fetch_vat_exemption_reasons(self):
         access_token = self.get_access_token()
         url = f"{TOC_BASE_URL}/api/tax_descriptors"

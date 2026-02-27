@@ -26,6 +26,9 @@ class StockPicking(models.Model):
     toc_communication_code = fields.Char("AT Communication Code")
 
 
+    # =====================================================
+    # SEND GR
+    # =====================================================
     from odoo import _, fields
     from odoo.exceptions import UserError
     from markupsafe import Markup
@@ -33,9 +36,6 @@ class StockPicking(models.Model):
 
     _logger = logging.getLogger(__name__)
 
-    # =====================================================
-    # VALIDATE DELIVERY → SEND TO TOCONLINE
-    # =====================================================
 
     def button_validate(self):
         res = super().button_validate()
@@ -46,9 +46,6 @@ class StockPicking(models.Model):
                 picking._send_delivery_to_toconline()
         return res
 
-    # =====================================================
-    # SEND GR
-    # =====================================================
 
     def _send_delivery_to_toconline(self):
         self.ensure_one()
@@ -67,6 +64,7 @@ class StockPicking(models.Model):
 
         move_model = self.env["account.move"]
 
+
         lines = []
         for move in self.move_ids_without_package:
             done_qty = sum(move.move_line_ids.mapped("quantity"))
@@ -82,17 +80,53 @@ class StockPicking(models.Model):
                 else product.list_price
             )
 
-            # IVA do produto
-            tax = product.taxes_id[:1]
+            sale_line = move.sale_line_id
 
-            tax_code = "NOR"
-            tax_percentage = 23.0
+            tax = (
+                sale_line.tax_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+                if sale_line
+                else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+            )
+
+            tax_code = "ISE"
+            tax_percentage = 0.0
             tax_region = "PT"
+            tax_exemption_reason = None
+
 
             if tax:
-                tax_percentage = tax.amount or 23.0
+                tax_percentage = round(tax.amount or 0.0, 2)
 
-            lines.append({
+                if tax_percentage == 23:
+                    tax_code = "NOR"
+                elif tax_percentage == 13:
+                    tax_code = "INT"
+                elif tax_percentage == 6:
+                    tax_code = "RED"
+                elif tax_percentage == 0:
+                    tax_code = "ISE"
+
+                    if sale_line and sale_line.l10npt_vat_exempt_reason:
+                        tax_exemption_reason = (
+                            sale_line.l10npt_vat_exempt_reason.code
+                        )
+                    else:
+                        raise UserError(
+                            _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
+                            % product.display_name
+                        )
+                else:
+                    tax_code = "NOR"
+
+                _logger.info(
+                    "IVA aplicado: %s | %s%% | Código: %s",
+                    tax.name,
+                    tax_percentage,
+                    tax_code,
+                )
+
+
+            line_dict = {
                 "item_type": "Product",
                 "item_id": product_id,
                 "item_code": product.default_code or product.name[:30],
@@ -103,7 +137,11 @@ class StockPicking(models.Model):
                 "tax_code": tax_code,
                 "tax_percentage": tax_percentage,
                 "tax_country_region": tax_region,
-            })
+            }
+
+
+
+            lines.append(line_dict)
 
         if not lines:
             return
@@ -118,7 +156,7 @@ class StockPicking(models.Model):
 
         warehouse = self.picking_type_id.warehouse_id
         from_partner = warehouse.partner_id or self.company_id.partner_id
-        to_partner = self.partner_id
+        to_partner = self.env.company
 
         loading_time = self.date_done or fields.Datetime.now()
 
@@ -129,6 +167,26 @@ class StockPicking(models.Model):
             if len(digits) >= 7:
                 return f"{digits[:4]}-{digits[4:7]}"
             return "0000-000"
+
+        if tax_percentage == 0:
+                if not tax_exemption_reason:
+                    raise UserError(
+                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
+                        % product.display_name
+                    )
+
+                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
+                    access_token,
+                    tax_exemption_reason,
+                )
+
+                if not exemption_id:
+                    raise UserError(
+                        _("Motivo de isenção '%s' não encontrado no TOConline.")
+                        % tax_exemption_reason
+                    )
+
+                tax_exemption_reason = exemption_id
 
         payload = {
             "document_type": "GR",
@@ -143,11 +201,13 @@ class StockPicking(models.Model):
             "customer_country": partner.country_id.code or "PT",
 
             "operation_country": "PT",
+
+            # DESCARGA (OBRIGATÓRIO GR)
             "shipment_address_detail": to_partner.street or "",
             "shipment_city": to_partner.city or "",
             "shipment_postcode": zip_pt(to_partner.zip),
             "shipment_country": to_partner.country_id.code or "PT",
-
+            "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
 
@@ -175,9 +235,11 @@ class StockPicking(models.Model):
 
 
     def _communicate_to_at(self, access_token, toc_doc_id):
+        """ Comunica o documento à Autoridade Tributária """
         company = self.company_id
+        # Estes campos devem existir na configuração da empresa no seu módulo
         at_user = company.toc_at_user
-        at_pass = company.toc_at_password
+        at_pass = company.toc_at_password  # Deve ser base64 conforme documentação
 
         if not at_user or not at_pass:
             _logger.warning("AT credentials missing, skipping communication for %s", self.name)
@@ -208,10 +270,6 @@ class StockPicking(models.Model):
             self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
 
 
-
-    # =====================================================
-    # DOWNLOAD PDF
-    # =====================================================
     def _download_and_attach_toc_pdf(self, access_token):
         self.ensure_one()
 

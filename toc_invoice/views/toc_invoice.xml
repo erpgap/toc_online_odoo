@@ -1,4 +1,34 @@
 <odoo>
+
+<!--    <record id="view_order_form_inherit_vat_reason" model="ir.ui.view">-->
+<!--        <field name="name">sale.order.form.vat.reason</field>-->
+<!--        <field name="model">sale.order</field>-->
+<!--        <field name="inherit_id" ref="sale.view_order_form"/>-->
+<!--        <field name="arch" type="xml">-->
+
+<!--            &lt;!&ndash; Inserir campo na lista de linhas &ndash;&gt;-->
+<!--            <xpath expr="//field[@name='order_line']//field[@name='tax_id']" position="after">-->
+<!--                <field name="l10npt_vat_exempt_reason"-->
+<!--                       attrs="{'invisible': [('tax_id.amount', '!=', 0)]}"/>-->
+<!--            </xpath>-->
+
+<!--        </field>-->
+<!--    </record>-->
+
+
+<record id="view_order_form_inherit_vat_reason" model="ir.ui.view">
+    <field name="name">sale.order.form.vat.reason</field>
+    <field name="model">sale.order</field>
+    <field name="inherit_id" ref="sale.view_order_form"/>
+    <field name="arch" type="xml">
+
+        <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="after">
+            <field name="l10npt_vat_exempt_reason"/>
+        </xpath>
+
+    </field>
+</record>
+
     <record id="view_account_move_form_inherit_toconline" model="ir.ui.view">
         <field name="name">account.move.form.inherit.toconline</field>
         <field name="model">account.move</field>

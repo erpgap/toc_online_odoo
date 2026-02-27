@@ -10,3 +10,4 @@ from . import credit_note_sync
 from . import account_journal
 from . import toc_vat_exemption
 from . import stock_picking
+from . import sale_order_line
