@@ -157,6 +157,7 @@ class StockPicking(models.Model):
         warehouse = self.picking_type_id.warehouse_id
         from_partner = warehouse.partner_id or self.company_id.partner_id
         to_partner = self.env.company
+        # to_partner = self.partner_id
 
         loading_time = self.date_done or fields.Datetime.now()
 
@@ -188,6 +189,31 @@ class StockPicking(models.Model):
 
                 tax_exemption_reason = exemption_id
 
+        for move in self.move_ids_without_package:
+            sale_line = move.sale_line_id
+
+            if sale_line and sale_line.l10npt_vat_exempt_reason:
+                tax_exemption_reason = sale_line.l10npt_vat_exempt_reason.code
+                if not tax_exemption_reason:
+                    raise UserError(
+                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
+                        % product.display_name
+                    )
+
+                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
+                    access_token,
+                    tax_exemption_reason,
+                )
+
+                if not exemption_id:
+                    raise UserError(
+                        _("Motivo de isenção '%s' não encontrado no TOConline.")
+                        % tax_exemption_reason
+                    )
+
+                tax_exemption_reason = exemption_id
+                break
+
         payload = {
             "document_type": "GR",
             "date": doc_date.strftime("%Y-%m-%d"),
@@ -200,13 +226,19 @@ class StockPicking(models.Model):
             "customer_city": partner.city or "",
             "customer_country": partner.country_id.code or "PT",
 
+            "shipment_from_address_detail": to_partner.street or "",
+            "shipment_from_postcode": zip_pt(to_partner.zip),
+            "shipment_from_city": to_partner.city or "",
+            "shipment_from_country": to_partner.country_id.code if to_partner.country_id else "PT",
+
+
             "operation_country": "PT",
 
             # DESCARGA (OBRIGATÓRIO GR)
-            "shipment_address_detail": to_partner.street or "",
-            "shipment_city": to_partner.city or "",
-            "shipment_postcode": zip_pt(to_partner.zip),
-            "shipment_country": to_partner.country_id.code or "PT",
+            "shipment_address_detail": partner.street or "",
+            "shipment_city": partner.city or "",
+            "shipment_postcode": zip_pt(partner.zip),
+            "shipment_country": partner.country_id.code or "PT",
             "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
@@ -229,6 +261,7 @@ class StockPicking(models.Model):
             "toc_document_no": data.get("document_no"),
             "toc_document_id": data.get("id"),
         })
+
 
         if self.toc_document_id:
             self._download_and_attach_toc_pdf(access_token)
