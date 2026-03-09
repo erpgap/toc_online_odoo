@@ -42,6 +42,15 @@ class SaleOrderLine(models.Model):
         readonly=False,
     )
 
+    @api.constrains("tax_id")
+    def _check_tax_required(self):
+        for line in self:
+            if not line.tax_id:
+                raise ValidationError(
+                    _("A linha '%s' precisa ter um imposto definido.")
+                    % line.product_id.display_name
+                )
+
     @api.depends("tax_id")
     def _compute_l10npt_vat_exempt_reason(self):
         for line in self:
@@ -59,15 +68,17 @@ class SaleOrderLine(models.Model):
             else:
                 line.l10npt_vat_exempt_reason = False
 
-
     @api.constrains("tax_id", "l10npt_vat_exempt_reason")
     def _check_vat_exempt_reason(self):
         for line in self:
             zero_tax = line.tax_id.filtered(
-                lambda t: t.amount == '0' and t.type_tax_use == "sale"
+                lambda t: round(t.amount, 2) == 0 and t.type_tax_use == "sale"
             )
 
             if zero_tax and not line.l10npt_vat_exempt_reason:
                 raise ValidationError(
-                    _("VAT Exempt Reason is required when tax is 0%.")
+                    _(
+                        "A linha '%s' possui IVA 0%%. É obrigatório informar o motivo de isenção."
+                    )
+                    % line.product_id.display_name
                 )
