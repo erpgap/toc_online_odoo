@@ -1,9 +1,60 @@
 from odoo import models, fields, api
 from odoo.exceptions import ValidationError
 from odoo import _
+from odoo.exceptions import UserError
+from odoo import Command
 
-from odoo import models
+class RepairOrder(models.Model):
+    _inherit = "repair.order"
 
+    class RepairOrder(models.Model):
+        _inherit = "repair.order"
+
+        def action_create_sale_order(self):
+            res = super().action_create_sale_order()
+
+            for repair in self:
+                if repair.sale_order_id:
+                    for move in repair.move_ids:
+                        if move.sale_line_id and move.tax_id:
+                            move.sale_line_id.tax_id = [(6, 0, move.tax_id.ids)]
+
+            return res
+
+
+class StockMove(models.Model):
+    _inherit = "stock.move"
+
+    tax_id = fields.Many2many(
+        "account.tax",
+        string="Taxes",
+        domain=[("type_tax_use", "=", "sale")],
+    )
+
+    def _create_repair_sale_order_line(self):
+        SaleOrderLine = self.env['sale.order.line']
+
+        for move in self:
+            if not move.repair_id.sale_order_id:
+                continue
+
+            order = move.repair_id.sale_order_id
+
+            taxes = move.tax_id.ids or move.product_id.taxes_id.filtered(
+                lambda t: t.type_tax_use == "sale"
+            ).ids
+
+            vals = {
+                "order_id": order.id,
+                "product_id": move.product_id.id,
+                "name": move.product_id.display_name,
+                "product_uom_qty": move.product_uom_qty,
+                "price_unit": move.product_id.lst_price,
+                "tax_id": [(6, 0, taxes)],
+            }
+
+            line = SaleOrderLine.create(vals)
+            move.sale_line_id = line.id
 
 class SaleOrder(models.Model):
     _inherit = "sale.order"
