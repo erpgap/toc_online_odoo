@@ -235,7 +235,7 @@ class CreditNoteWizard(models.TransientModel):
             'toc_status_credit_note':'sent'
         })
 
-        credit_note._cr.commit()
+        credit_note.env.cr.commit()
         return {'type': 'ir.actions.act_window_close'}
 
 

@@ -8,7 +8,6 @@ from markupsafe import Markup
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 from datetime import timedelta
 
 _logger = logging.getLogger(__name__)
@@ -62,11 +61,6 @@ class AccountMove(models.Model):
             record.credit_note_total_value = aux
         return aux
 
-    def get_invoice_number(self):
-        for rec in self:
-            _logger = logging.getLogger(__name__)
-            _logger.info("ID: %s | Número: %s | Estado: %s", rec.id, rec.name, rec.state)
-
     def get_value_credit_note(self):
         return self.credit_note_total_value
 
@@ -92,7 +86,7 @@ class AccountMove(models.Model):
         for record in self:
             for line in record.invoice_line_ids:
                 product = line.product_id
-                if product and not product.product_tmpl_id.default_code:
+                if product and not product.default_code:
                     raise ValidationError(
                         f"The product '{product.name}' must have an internal reference (default_code) set."
                     )
@@ -114,7 +108,7 @@ class AccountMove(models.Model):
                 raise ValidationError("The invoice has already been cancelled in TOConline and cannot be modified.")
 
     def get_base_url(self):
-        return  TOC_BASE_URL
+        return self.env.company.toc_api_url
 
     def get_toc_status_credit_note(self):
         return  self.toc_status_credit_note
@@ -145,7 +139,7 @@ class AccountMove(models.Model):
 
         response = self.env['toc.api'].toc_request(
             method='GET',
-            url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/",
+            url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/",
             access_token=access_token
         )
 
@@ -170,7 +164,7 @@ class AccountMove(models.Model):
 
         response =  self.env['toc.api'].toc_request(
             method='GET',
-            url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/",
+            url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/",
             access_token=access_token
         )
 
@@ -200,7 +194,7 @@ class AccountMove(models.Model):
 
         response =  self.env['toc.api'].toc_request(
             method='GET',
-            url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/",
+            url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/",
             access_token=access_token
         )
 
@@ -222,7 +216,7 @@ class AccountMove(models.Model):
         """
             Search for available VAT rates on TOConline.
         """
-        url = f"{TOC_BASE_URL}/api/taxes"
+        url = f"{self.env.company.toc_api_url}/api/taxes"
         response =  self.env['toc.api'].toc_request(
             method='GET',
             url=url,
@@ -302,7 +296,7 @@ class AccountMove(models.Model):
         customers = []
 
         if tax_number != "999999990" and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{self.env.company.toc_api_url}/api/customers?filter[tax_registration_number]={tax_number}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -315,7 +309,7 @@ class AccountMove(models.Model):
                     return customers[0]["id"]
 
         if email:
-            search_url = f"{TOC_BASE_URL}/api/customers?filter[email]={email}"
+            search_url = f"{self.env.company.toc_api_url}/api/customers?filter[email]={email}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -327,7 +321,7 @@ class AccountMove(models.Model):
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        create_url = f"{TOC_BASE_URL}/api/customers"
+        create_url = f"{self.env.company.toc_api_url}/api/customers"
         customer_payload = {
             "data": {
                 "type": "customers",
@@ -337,7 +331,7 @@ class AccountMove(models.Model):
                     "contact_name": partner.name,
                     "website": partner.website or "",
                     "phone_number": partner.phone or "",
-                    "mobile_number": partner.mobile or "",
+                    "mobile_number": getattr(partner, "mobile", "") or "",
                     "email": email,
                     "observations": "",
                     "internal_observations": "",
@@ -368,7 +362,7 @@ class AccountMove(models.Model):
         if not product.default_code:
             raise UserError(_("Product code (default_code) is empty."))
 
-        search_url = f"{TOC_BASE_URL}/api/products?filter[item_code]={product.default_code}"
+        search_url = f"{self.env.company.toc_api_url}/api/products?filter[item_code]={product.default_code}"
         response = self.env['toc.api'].toc_request(
             method='GET',
             url=search_url,
@@ -382,7 +376,7 @@ class AccountMove(models.Model):
 
         if product.list_price is None:
             raise UserError(_(f"The selling price (list_price) of the product {product.name} is empty."))
-        create_url = f"{TOC_BASE_URL}/api/products"
+        create_url = f"{self.env.company.toc_api_url}/api/products"
         product_payload = {
             "data": {
                 "type": "products",
@@ -482,7 +476,7 @@ class AccountMove(models.Model):
 
                 response = self.env['toc.api'].toc_request(
                     method='POST',
-                    url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents",
+                    url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents",
                     payload=payload,
                     access_token=access_token
                 )
@@ -558,7 +552,7 @@ class AccountMove(models.Model):
 
     def _get_last_toc_document_date(self, access_token):
         """ Consulta a TOConline para obter a data do último documento emitido """
-        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents?sort=-date&page[size]=1"
+        url = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents?sort=-date&page[size]=1"
         try:
             response = self.env['toc.api'].toc_request(
                 method='GET',
@@ -699,7 +693,7 @@ class AccountMove(models.Model):
                     }
                 }
 
-                url = f"{TOC_BASE_URL}/api/commercial_sales_documents"
+                url = f"{self.env.company.toc_api_url}/api/commercial_sales_documents"
                 response = self.env['toc.api'].toc_request(
                         method='PATCH',
                         url=url,
@@ -757,7 +751,7 @@ class AccountMove(models.Model):
         """
         customers = []
         if tax_number and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{TOC_BASE_URL}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{self.env.company.toc_api_url}/api/customers?filter[tax_registration_number]={tax_number}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -766,7 +760,7 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
         if not customers and email:
-            search_url = f"{TOC_BASE_URL}/api/customers?filter[email]={email}"
+            search_url = f"{self.env.company.toc_api_url}/api/customers?filter[email]={email}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -804,7 +798,7 @@ class AccountMove(models.Model):
         }
 
     def _is_saft_exported(self, document_id, access_token):
-        url = f"{TOC_BASE_URL}/api/commercial_sales_documents/{document_id}"
+        url = f"{self.env.company.toc_api_url}/api/commercial_sales_documents/{document_id}"
         response = self.env['toc.api'].toc_request(
             method='GET',
             url=url,
@@ -951,7 +945,7 @@ class AccountMove(models.Model):
             'toc_status_credit_note': 'sent'
         })
 
-        self._cr.commit()
+        self.env.cr.commit()
 
         for records in self:
             if records.toc_status == 'sent':
@@ -987,7 +981,7 @@ class AccountMove(models.Model):
         """
         Faz o download do PDF da fatura da TOConline e anexa ao registro da fatura no Odoo.
         """
-        url_api = f"{TOC_BASE_URL}/api/url_for_print/{toc_document_id}?filter[type]=Document&filter[copies]=1"
+        url_api = f"{self.env.company.toc_api_url}/api/url_for_print/{toc_document_id}?filter[type]=Document&filter[copies]=1"
 
 
         response = self.env['toc.api'].toc_request(

@@ -15,7 +15,7 @@ class SaleOrder(models.Model):
             exempt_reason = None
 
             for line in order.order_line:
-                tax = line.tax_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+                tax = line.tax_ids.filtered(lambda t: t.type_tax_use == "sale")[:1]
 
                 if tax and round(tax.amount or 0.0, 2) == 0:
                     if line.l10npt_vat_exempt_reason:
@@ -42,19 +42,19 @@ class SaleOrderLine(models.Model):
         readonly=False,
     )
 
-    @api.constrains("tax_id")
+    @api.constrains("tax_ids")
     def _check_tax_required(self):
         for line in self:
-            if not line.tax_id:
+            if not line.tax_ids:
                 raise ValidationError(
                     _("A linha '%s' precisa ter um imposto definido.")
                     % line.product_id.display_name
                 )
 
-    @api.depends("tax_id")
+    @api.depends("tax_ids")
     def _compute_l10npt_vat_exempt_reason(self):
         for line in self:
-            zero_tax = line.tax_id.filtered(
+            zero_tax = line.tax_ids.filtered(
                 lambda t: t.amount == '0' and t.type_tax_use == "sale"
             )
 
@@ -68,10 +68,10 @@ class SaleOrderLine(models.Model):
             else:
                 line.l10npt_vat_exempt_reason = False
 
-    @api.constrains("tax_id", "l10npt_vat_exempt_reason")
+    @api.constrains("tax_ids", "l10npt_vat_exempt_reason")
     def _check_vat_exempt_reason(self):
         for line in self:
-            zero_tax = line.tax_id.filtered(
+            zero_tax = line.tax_ids.filtered(
                 lambda t: round(t.amount, 2) == 0 and t.type_tax_use == "sale"
             )
 

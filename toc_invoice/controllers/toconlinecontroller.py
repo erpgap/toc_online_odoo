@@ -20,7 +20,7 @@ class TocOauthController(http.Controller):
 
         return "Successful authentication with TOConline. You can close this window."
 
-    @http.route('/toc/test_create_customer', type='json', auth='user', csrf=False)
+    @http.route('/toc/test_create_customer', type='jsonrpc', auth='user', csrf=False)
     def test_create_customer(self, **kwargs):
         partner_id = kwargs.get('partner_id')
         access_token = kwargs.get('access_token')

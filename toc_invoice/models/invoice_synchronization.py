@@ -4,7 +4,6 @@ import requests
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -13,15 +12,6 @@ _logger = logging.getLogger(__name__)
 class InvoiceSync(models.Model):
     _name = 'invoice.sync'
     _description = 'Sync Invoices from TOConline'
-
-    import logging
-    from odoo import models, fields, api, _
-    from odoo.exceptions import UserError
-
-    # Import the base URL from your utils
-    from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-
-    _logger = logging.getLogger(__name__)
 
     class InvoiceSync(models.Model):
         _name = 'invoice.sync'
@@ -214,7 +204,7 @@ class InvoiceSync(models.Model):
                 _logger.error("Access token not found for company %s", company.name)
                 return None
 
-            url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
+            url = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/{toc_document_id}"
             try:
                 response = self.env['toc.api'].toc_request(
                     method='GET',

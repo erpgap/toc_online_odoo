@@ -6,7 +6,6 @@ from odoo import models, fields, _
 from odoo.exceptions import UserError
 from markupsafe import Markup
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -29,13 +28,6 @@ class StockPicking(models.Model):
     # =====================================================
     # SEND GR
     # =====================================================
-    from odoo import _, fields
-    from odoo.exceptions import UserError
-    from markupsafe import Markup
-    import logging
-
-    _logger = logging.getLogger(__name__)
-
 
     def button_validate(self):
         res = super().button_validate()
@@ -66,7 +58,7 @@ class StockPicking(models.Model):
 
 
         lines = []
-        for move in self.move_ids_without_package:
+        for move in self.move_ids:
             done_qty = sum(move.move_line_ids.mapped("quantity"))
             if done_qty <= 0:
                 continue
@@ -83,7 +75,7 @@ class StockPicking(models.Model):
             sale_line = move.sale_line_id
 
             tax = (
-                sale_line.tax_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+                sale_line.tax_ids.filtered(lambda t: t.type_tax_use == "sale")[:1]
                 if sale_line
                 else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
             )
@@ -189,7 +181,7 @@ class StockPicking(models.Model):
 
                 tax_exemption_reason = exemption_id
 
-        for move in self.move_ids_without_package:
+        for move in self.move_ids:
             sale_line = move.sale_line_id
 
             if sale_line and sale_line.l10npt_vat_exempt_reason:
@@ -245,7 +237,7 @@ class StockPicking(models.Model):
 
         response = toc_api.toc_request(
             method="POST",
-            url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents",
+            url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents",
             payload=payload,
             access_token=access_token,
         )
@@ -292,7 +284,7 @@ class StockPicking(models.Model):
 
         response = self.env["toc.api"].toc_request(
             method="POST",
-            url=f"{TOC_BASE_URL}/api/send_document_at_webservice",
+            url=f"{self.env.company.toc_api_url}/api/send_document_at_webservice",
             payload=payload_at,
             access_token=access_token,
         )
@@ -310,7 +302,7 @@ class StockPicking(models.Model):
             return
 
         url_api = (
-            f"{TOC_BASE_URL}/api/url_for_print/"
+            f"{self.env.company.toc_api_url}/api/url_for_print/"
             f"{self.toc_document_id}?filter[type]=Document&filter[copies]=1"
         )
 

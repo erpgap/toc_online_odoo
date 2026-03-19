@@ -25,7 +25,7 @@ class AccountMoveSendWizard(models.TransientModel):
         if self.sending_methods and 'manual' in self.sending_methods:
             return self._action_download(attachments)
         else:
-            template = self.mail_template_id or self.move_id._get_default_mail_template()
+            template = self.template_id or self._get_default_mail_template_id(self.move_id)
             mail_id = template.with_context(attachment_ids=attachments).send_mail(self.move_id.id, force_send=False)
             mail = self.env['mail.mail'].browse(mail_id)
             mail.attachment_ids = [(6, 0, attachments)]
@@ -33,7 +33,7 @@ class AccountMoveSendWizard(models.TransientModel):
 
             return {'type': 'ir.actions.act_window_close'}
 
-    @api.depends('mail_template_id', 'sending_methods', 'invoice_edi_format', 'extra_edis')
+    @api.depends('template_id', 'invoice_edi_format', 'extra_edis', 'pdf_report_id')
     def _compute_mail_attachments_widget(self):
         for wizard in self:
             manual_attachments_data = [x for x in wizard.mail_attachments_widget or [] if x.get('manual')]

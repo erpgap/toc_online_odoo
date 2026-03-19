@@ -2,8 +2,6 @@ import requests
 from datetime import timedelta
 
 from odoo import models, fields, api, _
-from odoo.addons.toc_invoice.utils import token_url
-
 
 
 class ResConfigSettings(models.TransientModel):
@@ -24,6 +22,21 @@ class ResConfigSettings(models.TransientModel):
         related='company_id.toc_company_id',
         readonly=True
     )
+    toc_auth_url = fields.Char(
+        string="OAuth Authentication URL",
+        related='company_id.toc_auth_url',
+        readonly=False,
+    )
+    toc_api_url = fields.Char(
+        string="API Base URL",
+        related='company_id.toc_api_url',
+        readonly=False,
+    )
+    toc_redirect_uri = fields.Char(
+        string="Redirect URI",
+        related='company_id.toc_redirect_uri',
+        readonly=False,
+    )
 
     @api.model
     def get_values(self):
@@ -32,6 +45,9 @@ class ResConfigSettings(models.TransientModel):
         res.update({
             'toc_online_client_id': company.toc_online_client_id,
             'toc_online_client_secret': company.toc_online_client_secret,
+            'toc_auth_url': company.toc_auth_url,
+            'toc_api_url': company.toc_api_url,
+            'toc_redirect_uri': company.toc_redirect_uri,
         })
         return res
 
@@ -41,6 +57,9 @@ class ResConfigSettings(models.TransientModel):
         company.write({
             'toc_online_client_id': self.toc_online_client_id,
             'toc_online_client_secret': self.toc_online_client_secret,
+            'toc_auth_url': self.toc_auth_url,
+            'toc_api_url': self.toc_api_url,
+            'toc_redirect_uri': self.toc_redirect_uri,
         })
 
 
@@ -54,6 +73,7 @@ class ResConfigSettings(models.TransientModel):
 
     def exchange_authorization_code_and_save_tokens(self):
         company = self.env.company
+        self.env['toc.api']._check_toc_url_configuration(company)
 
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
@@ -63,7 +83,7 @@ class ResConfigSettings(models.TransientModel):
         if not authorization_code:
             raise ValueError(_("Missing Authorization Code."))
 
-        url = token_url
+        token_url = company.toc_auth_url + '/token'
         data = {
             'grant_type': 'authorization_code',
             'code': authorization_code,
@@ -72,7 +92,7 @@ class ResConfigSettings(models.TransientModel):
             'client_secret': client_secret,
         }
 
-        response = requests.post(url, data=data)
+        response = requests.post(token_url, data=data)
         if response.status_code != 200:
             raise ValueError(_(f"Error exchanging authorization code: {response.text}"))
 

@@ -8,8 +8,6 @@ from urllib.parse import urlparse, parse_qs
 from odoo import models, fields, _
 from odoo.exceptions import UserError
 
-from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -23,9 +21,10 @@ class TocAPI(models.AbstractModel):
     client_secret = fields.Char(string="Client Secret")
 
     def get_tax_exemption_reason_id(self, access_token, reason_code):
+        base_url = self.env.company.toc_api_url
         response = self.toc_request(
             method="GET",
-            url=f"{TOC_BASE_URL}/tax_exemption_reasons?filter[code]={reason_code}",
+            url=f"{base_url}/tax_exemption_reasons?filter[code]={reason_code}",
             access_token=access_token,
         )
 
@@ -43,7 +42,8 @@ class TocAPI(models.AbstractModel):
 
     def fetch_vat_exemption_reasons(self):
         access_token = self.get_access_token()
-        url = f"{TOC_BASE_URL}/api/tax_descriptors"
+        base_url = self.env.company.toc_api_url
+        url = f"{base_url}/api/tax_descriptors"
 
         try:
             response = self.toc_request(
@@ -138,17 +138,37 @@ class TocAPI(models.AbstractModel):
             raise UserError(
                 _("HTTP Error %s: %s\n\nDetails:\n%s") % (response.status_code, response.reason, error_text))
 
+    def _check_toc_url_configuration(self, company=None):
+        company = company or self.env.company
+        missing = []
+        if not company.toc_online_client_id:
+            missing.append(_("Client ID"))
+        if not company.toc_online_client_secret:
+            missing.append(_("Client Secret"))
+        if not company.toc_api_url:
+            missing.append(_("API Base URL"))
+        if not company.toc_auth_url:
+            missing.append(_("OAuth Authentication URL"))
+        if not company.toc_redirect_uri:
+            missing.append(_("Redirect URI"))
+        if missing:
+            raise UserError(_(
+                "TOConline URL configuration is incomplete. "
+                "Please configure the following in Settings > Accounting > TOConline Configuration:\n- %s"
+            ) % "\n- ".join(missing))
+
     def get_authorization_url(self, company=None):
         company = (company or self.env.company).sudo()
+        self._check_toc_url_configuration(company)
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
 
         if not client_id or not client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured."))
-        url_aux = f"{auth_url}/auth?"
+        url_aux = f"{company.toc_auth_url}/auth?"
         params = {
             "client_id": client_id,
-            "redirect_uri": redirect_uri,
+            "redirect_uri": company.toc_redirect_uri,
             "response_type": "code",
             "scope": "commercial"
         }
@@ -179,13 +199,14 @@ class TocAPI(models.AbstractModel):
         payload = {
             "grant_type": "authorization_code",
             "code": authorization_code,
-            "redirect_uri": redirect_uri
+            "redirect_uri": company.toc_redirect_uri,
         }
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Authorization": f"Basic {base64_credentials}"
         }
 
+        token_url = company.toc_auth_url + '/token'
         response = requests.post(token_url, data=payload, headers=headers)
         if response.status_code == 200:
             tokens = response.json()
@@ -207,6 +228,7 @@ class TocAPI(models.AbstractModel):
 
     def get_access_token(self, company=None):
         company = (company or self.env.company).sudo()
+        self._check_toc_url_configuration(company)
         config = self.env['ir.config_parameter'].sudo()
 
         if not company.toc_online_client_id or not company.toc_online_client_secret:
@@ -273,6 +295,7 @@ class TocAPI(models.AbstractModel):
             "Accept": "application/json",
             "Authorization": f"Basic {base64_credentials}"
         }
+        token_url = company.toc_auth_url + '/token'
         response = requests.post(token_url, data=payload, headers=headers)
 
         if response.status_code == 200:

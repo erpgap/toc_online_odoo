@@ -5,7 +5,6 @@ import requests
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -90,7 +89,7 @@ class CreditNoteSync(models.Model):
         if not access_token:
             raise UserError(f"TOConline access token not found for company {company.name}.")
 
-        url = f"{TOC_BASE_URL}/api/v1/commercial_sales_documents/{toc_document_id}"
+        url = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/{toc_document_id}"
 
         try:
             response = self.env['toc.api'].toc_request(

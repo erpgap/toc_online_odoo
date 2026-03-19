@@ -8,3 +8,12 @@ class ResCompany(models.Model):
     toc_cash_account_id = fields.Char(string="Cash Account ID")
     toc_online_client_id = fields.Char(string="Client ID")
     toc_online_client_secret = fields.Char(string="Client Secret")
+    toc_auth_url = fields.Char(
+        string="OAuth Authentication URL",
+    )
+    toc_api_url = fields.Char(
+        string="API Base URL",
+    )
+    toc_redirect_uri = fields.Char(
+        string="Redirect URI",
+    )

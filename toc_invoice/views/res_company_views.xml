@@ -6,7 +6,9 @@
         <field name="inherit_id" ref="base.view_company_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='name']" position="after">
+                <label for="toc_company_id"/>
                 <field name="toc_company_id"/>
+                <label for="toc_cash_account_id"/>
                 <field name="toc_cash_account_id"/>
             </xpath>
         </field>

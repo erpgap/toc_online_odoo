@@ -1,6 +1,5 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -38,7 +37,7 @@ class ResPartner(models.Model):
         access_token = self.env['toc.api'].get_access_token()  # ajuste com a forma como seu token é gerado
 
         customer_id = self.toc_online_id
-        update_url = f"{TOC_BASE_URL}/api/customers/{customer_id}"
+        update_url = f"{self.env.company.toc_api_url}/api/customers/{customer_id}"
 
         tax_number = self.vat.replace(" ", "").strip() if self.vat else "999999990"
         email = self.email.strip() if self.email else ""
@@ -53,7 +52,7 @@ class ResPartner(models.Model):
                     "contact_name": self.name,
                     "website": self.website or "",
                     "phone_number": self.phone or "",
-                    "mobile_number": self.mobile or "",
+                    "mobile_number": getattr(self, "mobile", "") or "",
                     "email": email,
                     "observations": "",
                     "internal_observations": "",
