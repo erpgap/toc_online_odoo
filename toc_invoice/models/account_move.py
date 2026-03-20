@@ -409,7 +409,7 @@ class AccountMove(models.Model):
     def action_post(self):
         access_token = self.env['toc.api'].get_access_token()
         for move in self:
-            if move.state == 'draft' and move.journal_id.send_to_toconline:
+            if move.state == 'draft' and move.company_id.toc_online_enabled and move.journal_id.send_to_toconline:
                 move._adjust_date_for_chronology(access_token)
 
         res = super().action_post()
@@ -427,7 +427,7 @@ class AccountMove(models.Model):
                     "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
                 ) % previous_invoice.name)
 
-            if move.journal_id.send_to_toconline:
+            if move.company_id.toc_online_enabled and move.journal_id.send_to_toconline:
                 move.action_send_invoice_to_toconline()
                 move._handle_credit_note_posting()
                 if move.toc_status != 'sent' or move.checkbox != True:

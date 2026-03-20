@@ -10,29 +10,38 @@
                 <xpath expr="//app[@name='account']" position="inside">
                     <block title="TOConline Configuration" id="toc_online_settings"
                         groups="account.group_account_manager">
-                        <setting string="TOConline Client ID">
+                        <setting string="TOC Online"
+                            help="Enable to send invoices and pickings to TOC Online">
+                            <field name="toc_online_enabled"/>
+                        </setting>
+                        <setting string="TOConline Client ID"
+                            invisible="not toc_online_enabled">
                             <field name="toc_online_client_id" style="width:100% !important;"/>
                         </setting>
-                        <setting string="OAuth Authentication URL">
+                        <setting string="OAuth Authentication URL"
+                            invisible="not toc_online_enabled">
                             <field name="toc_auth_url"
                                 placeholder="e.g. https://app11.toconline.pt/oauth"
                                 style="width:100% !important;"/>
                         </setting>
-                        <setting string="TOConline Client Secret">
+                        <setting string="TOConline Client Secret"
+                            invisible="not toc_online_enabled">
                             <field name="toc_online_client_secret" password="True" style="width:100% !important;"/>
                         </setting>
-                        <setting string="API Base URL">
+                        <setting string="API Base URL"
+                            invisible="not toc_online_enabled">
                             <field name="toc_api_url"
                                 placeholder="e.g. https://api11.toconline.pt"
                                 style="width:100% !important;"/>
                         </setting>
                         <setting string="TOConline Company ID"
-                                invisible="not toc_company_id">
+                                invisible="not toc_online_enabled or not toc_company_id">
                             <field name="toc_company_id"
                                 readonly="1"
                                 groups="base.group_system"/>
                         </setting>
-                        <setting string="Redirect URI">
+                        <setting string="Redirect URI"
+                            invisible="not toc_online_enabled">
                             <field name="toc_redirect_uri"
                                 placeholder="e.g. https://oauth.pstmn.io/v1/callback"
                                 style="width:100% !important;"/>

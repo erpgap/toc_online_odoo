@@ -33,8 +33,7 @@ class StockPicking(models.Model):
         res = super().button_validate()
         for picking in self:
             company = picking.company_id
-            toc_enabled = company.toc_online_client_id and company.toc_online_client_secret
-            if picking.picking_type_code == "outgoing" and picking.state == "done" and toc_enabled:
+            if picking.picking_type_code == "outgoing" and picking.state == "done" and company.toc_online_enabled:
                 picking._send_delivery_to_toconline()
         return res
 

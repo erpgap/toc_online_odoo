@@ -7,6 +7,10 @@ from odoo import models, fields, api, _
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
+    toc_online_enabled = fields.Boolean(
+        related='company_id.toc_online_enabled',
+        readonly=False,
+    )
     toc_online_client_id = fields.Char(
         string="Client ID",
         related='company_id.toc_online_client_id',
@@ -43,6 +47,7 @@ class ResConfigSettings(models.TransientModel):
         res = super().get_values()
         company = self.env.company
         res.update({
+            'toc_online_enabled': company.toc_online_enabled,
             'toc_online_client_id': company.toc_online_client_id,
             'toc_online_client_secret': company.toc_online_client_secret,
             'toc_auth_url': company.toc_auth_url,
@@ -55,6 +60,7 @@ class ResConfigSettings(models.TransientModel):
         super().set_values()
         company = self.env.company
         company.write({
+            'toc_online_enabled': self.toc_online_enabled,
             'toc_online_client_id': self.toc_online_client_id,
             'toc_online_client_secret': self.toc_online_client_secret,
             'toc_auth_url': self.toc_auth_url,
