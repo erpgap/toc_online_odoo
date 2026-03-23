@@ -16,18 +16,16 @@
 <!--    </record>-->
 
 
-<record id="view_order_form_inherit_vat_reason" model="ir.ui.view">
-    <field name="name">sale.order.form.vat.reason</field>
-    <field name="model">sale.order</field>
-    <field name="inherit_id" ref="sale.view_order_form"/>
-    <field name="arch" type="xml">
-
-        <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="after">
-            <field name="l10npt_vat_exempt_reason"/>
-        </xpath>
-
-    </field>
-</record>
+<!--    <record id="view_order_form_inherit_vat_reason" model="ir.ui.view">-->
+<!--        <field name="name">sale.order.form.vat.reason</field>-->
+<!--        <field name="model">sale.order</field>-->
+<!--        <field name="inherit_id" ref="sale.view_order_form"/>-->
+<!--        <field name="arch" type="xml">-->
+<!--            <xpath expr="//field[@name='order_line']/list/field[@name='tax_id']" position="after">-->
+<!--                <field name="l10npt_vat_exempt_reason" invisible="1"/>-->
+<!--            </xpath>-->
+<!--        </field>-->
+<!--    </record>-->
 
     <record id="view_account_move_form_inherit_toconline" model="ir.ui.view">
         <field name="name">account.move.form.inherit.toconline</field>

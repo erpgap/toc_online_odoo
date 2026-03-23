@@ -5,11 +5,28 @@
         <field name="inherit_id" ref="repair.view_repair_order_form"/>
         <field name="arch" type="xml">
 
-            <!-- adiciona o campo de imposto após o produto -->
             <xpath expr="//field[@name='move_ids']/list/field[@name='product_id']" position="after">
                 <field name="tax_id" widget="many2many_tags"/>
             </xpath>
 
+            <xpath expr="//field[@name='tag_ids']" position="after">
+                <field name="l10npt_vat_exempt_reason" widget="many2one"/>
+            </xpath>
+
         </field>
     </record>
+
+    <record id="view_order_form_inherit_vat_exempt_reason" model="ir.ui.view">
+        <field name="name">sale.order.form.vat.exempt.reason</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+
+            <xpath expr="//field[@name='payment_term_id']" position="after">
+                <field name="l10npt_vat_exempt_reason"/>
+            </xpath>
+
+        </field>
+    </record>
+
 </odoo>
