@@ -71,6 +71,8 @@ class SaleOrderLine(models.Model):
     @api.constrains("tax_ids", "l10npt_vat_exempt_reason")
     def _check_vat_exempt_reason(self):
         for line in self:
+            if not line.order_id.company_id.toc_online_enabled:
+                continue
             zero_tax = line.tax_ids.filtered(
                 lambda t: round(t.amount, 2) == 0 and t.type_tax_use == "sale"
             )

@@ -1,7 +1,6 @@
-import requests
-from datetime import timedelta
-
 from odoo import models, fields, api, _
+
+from .toc_online_service import TocOnlineService
 
 
 class ResConfigSettings(models.TransientModel):
@@ -42,78 +41,34 @@ class ResConfigSettings(models.TransientModel):
         readonly=False,
     )
 
-    @api.model
-    def get_values(self):
-        res = super().get_values()
-        company = self.env.company
-        res.update({
-            'toc_online_enabled': company.toc_online_enabled,
-            'toc_online_client_id': company.toc_online_client_id,
-            'toc_online_client_secret': company.toc_online_client_secret,
-            'toc_auth_url': company.toc_auth_url,
-            'toc_api_url': company.toc_api_url,
-            'toc_redirect_uri': company.toc_redirect_uri,
-        })
-        return res
 
     def set_values(self):
         super().set_values()
         company = self.env.company
-        company.write({
-            'toc_online_enabled': self.toc_online_enabled,
-            'toc_online_client_id': self.toc_online_client_id,
-            'toc_online_client_secret': self.toc_online_client_secret,
-            'toc_auth_url': self.toc_auth_url,
-            'toc_api_url': self.toc_api_url,
-            'toc_redirect_uri': self.toc_redirect_uri,
-        })
-
-
-    @api.onchange('toc_online_client_id', 'toc_online_client_secret')
-    def _onchange_clear_tokens_if_missing_credentials(self):
-        if not self.toc_online_client_id or not self.toc_online_client_secret:
-            config = self.env['ir.config_parameter'].sudo()
-            config.set_param('toc_online.access_token', '')
-            config.set_param('toc_online.refresh_token', '')
-            config.set_param('toc_online.token_expiry', '')
+        if not self.toc_online_client_id or not self.toc_online_client_secret or not self.toc_online_enabled:
+            company.write({
+                'toc_online_access_token': False,
+                'toc_online_refresh_token': False,
+                'toc_online_token_expiry': False,
+            })
 
     def exchange_authorization_code_and_save_tokens(self):
         company = self.env.company
-        self.env['toc.api']._check_toc_url_configuration(company)
+        service = TocOnlineService(company, self.env)
+        service._check_configuration()
 
-        client_id = company.toc_online_client_id
-        client_secret = company.toc_online_client_secret
         authorization_code = self.env['ir.config_parameter'].sudo().get_param('toc_online.authorization_code')
-        redirect_uri = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-
         if not authorization_code:
             raise ValueError(_("Missing Authorization Code."))
 
-        token_url = company.toc_auth_url + '/token'
-        data = {
-            'grant_type': 'authorization_code',
-            'code': authorization_code,
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'client_secret': client_secret,
-        }
-
-        response = requests.post(token_url, data=data)
-        if response.status_code != 200:
-            raise ValueError(_(f"Error exchanging authorization code: {response.text}"))
-
-        tokens = response.json()
-
-        company.toc_online_access_token = tokens.get('access_token', '')
-        company.toc_online_refresh_token = tokens.get('refresh_token', '')
-        company.toc_online_token_expiry = fields.Datetime.now() + timedelta(seconds=tokens.get('expires_in', 3600))
+        service._get_tokens(authorization_code)
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
                 'title': 'TOConline',
-                'message': 'Tokens successfully obtained and saved!',
+                'message': _('Tokens successfully obtained and saved!'),
                 'sticky': False,
             }
         }

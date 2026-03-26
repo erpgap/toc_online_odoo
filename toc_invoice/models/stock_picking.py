@@ -1,11 +1,9 @@
 import logging
-import base64
-import requests
 
 from odoo import models, fields, _
 from odoo.exceptions import UserError
-from markupsafe import Markup
 
+from .toc_online_service import TocOnlineService
 
 _logger = logging.getLogger(__name__)
 
@@ -47,14 +45,7 @@ class StockPicking(models.Model):
         if not self.partner_id:
             raise UserError(_("Delivery has no customer."))
 
-        toc_api = self.env["toc.api"]
-        access_token = toc_api.get_access_token()
-
-        if not access_token:
-            raise UserError(_("Could not obtain TOConline access token."))
-
-        move_model = self.env["account.move"]
-
+        service = TocOnlineService(self.company_id, self.env)
 
         lines = []
         for move in self.move_ids:
@@ -63,7 +54,7 @@ class StockPicking(models.Model):
                 continue
 
             product = move.product_id
-            product_id = move_model.get_or_create_product_in_toconline(access_token, product)
+            product_id = service.get_or_create_product(product)
 
             unit_price = (
                 move.sale_line_id.price_unit
@@ -147,8 +138,7 @@ class StockPicking(models.Model):
 
         warehouse = self.picking_type_id.warehouse_id
         from_partner = warehouse.partner_id or self.company_id.partner_id
-        to_partner = self.env.company
-        # to_partner = self.partner_id
+        to_partner = self.company_id.partner_id
 
         loading_time = self.date_done or fields.Datetime.now()
 
@@ -167,10 +157,7 @@ class StockPicking(models.Model):
                         % product.display_name
                     )
 
-                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
-                    access_token,
-                    tax_exemption_reason,
-                )
+                exemption_id = service.get_tax_exemption_reason_id(tax_exemption_reason)
 
                 if not exemption_id:
                     raise UserError(
@@ -191,10 +178,7 @@ class StockPicking(models.Model):
                         % product.display_name
                     )
 
-                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
-                    access_token,
-                    tax_exemption_reason,
-                )
+                exemption_id = service.get_tax_exemption_reason_id(tax_exemption_reason)
 
                 if not exemption_id:
                     raise UserError(
@@ -234,12 +218,7 @@ class StockPicking(models.Model):
             "lines": lines,
         }
 
-        response = toc_api.toc_request(
-            method="POST",
-            url=f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents",
-            payload=payload,
-            access_token=access_token,
-        )
+        response = service.send_document(payload)
 
         if response.status_code not in (200, 201):
             self.toc_status = "error"
@@ -255,89 +234,26 @@ class StockPicking(models.Model):
 
 
         if self.toc_document_id:
-            self._download_and_attach_toc_pdf(access_token)
+            self._download_and_attach_toc_pdf(service)
 
 
-    def _communicate_to_at(self, access_token, toc_doc_id):
-        """ Comunica o documento à Autoridade Tributária """
-        company = self.company_id
-        # Estes campos devem existir na configuração da empresa no seu módulo
-        at_user = company.toc_at_user
-        at_pass = company.toc_at_password  # Deve ser base64 conforme documentação
-
-        if not at_user or not at_pass:
-            _logger.warning("AT credentials missing, skipping communication for %s", self.name)
-            return
-
-        payload_at = {
-            "data": {
-                "type": "send_document_at_webservice",
-                "id": toc_doc_id,
-                "attributes": {
-                    # "document_type": "GR",
-                    # "entity_username": at_user,
-                    # "entity_password": at_pass
-                }
-            }
-        }
-
-        response = self.env["toc.api"].toc_request(
-            method="POST",
-            url=f"{self.env.company.toc_api_url}/api/send_document_at_webservice",
-            payload=payload_at,
-            access_token=access_token,
-        )
-
-        if response.status_code == 200:
-            at_data = response.json().get("data", {}).get("attributes", {})
+    def _communicate_to_at(self, service, toc_doc_id):
+        at_data = service.communicate_to_at(toc_doc_id)
+        if at_data:
             self.toc_communication_code = at_data.get("communication_code")
             self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
 
 
-    def _download_and_attach_toc_pdf(self, access_token):
+    def _download_and_attach_toc_pdf(self, service):
         self.ensure_one()
 
         if self.toc_pdf_attached:
             return
 
-        url_api = (
-            f"{self.env.company.toc_api_url}/api/url_for_print/"
-            f"{self.toc_document_id}?filter[type]=Document&filter[copies]=1"
+        service.download_and_attach_pdf(
+            self, self.toc_document_id, f"Guia_{self.name}.pdf",
+            message=_("GR PDF downloaded and attached."),
         )
-
-        response = self.env["toc.api"].toc_request(
-            method="GET",
-            url=url_api,
-            access_token=access_token,
-        )
-
-        if response.status_code != 200:
-            raise UserError(_("Failed to get GR PDF URL from TOConline."))
-
-        try:
-            url_data = response.json()["data"]["attributes"]["url"]
-            pdf_url = f"{url_data['scheme']}://{url_data['host']}{url_data['path']}"
-        except Exception as e:
-            raise UserError(_("Error parsing PDF URL: %s") % str(e))
-
-        pdf_response = requests.get(pdf_url)
-        if pdf_response.status_code != 200:
-            raise UserError(_("Failed to download GR PDF."))
-
-        attachment = self.env["ir.attachment"].create({
-            "name": f"Guia_{self.name}.pdf",
-            "res_model": "stock.picking",
-            "res_id": self.id,
-            "type": "binary",
-            "datas": base64.b64encode(pdf_response.content),
-            "mimetype": "application/pdf",
-        })
-
         self.write({"toc_pdf_attached": True})
-
-        self.message_post(
-            body=Markup(_("GR PDF downloaded and attached.")),
-            attachment_ids=[attachment.id],
-        )
 
         _logger.info("GR PDF attached to picking %s", self.name)

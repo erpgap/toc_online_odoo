@@ -1,10 +1,10 @@
 import logging
-import requests
 import json
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
+from .toc_online_service import TocOnlineService
 
 _logger = logging.getLogger(__name__)
 
@@ -45,7 +45,9 @@ class AccountPayment(models.Model):
                         raise UserError(f"Cannot validate invoice {invoice.name} with VAT exemption without a reason.")
             invoice.action_post()
 
-        receipt_data = self.get_receipt_data(missing_receipt['receipt_id'])
+        company = invoice.company_id
+        service = TocOnlineService(company, self.env)
+        receipt_data = service.get_receipt(missing_receipt['receipt_id'])
 
         if not isinstance(receipt_data, dict):
             return False
@@ -86,7 +88,7 @@ class AccountPayment(models.Model):
 
             register_pay = self.env['account.payment.register'].with_context(
                 active_model='account.move',
-                active_ids=[invoice.id]  # lista com 1 ID
+                active_ids=[invoice.id]
             ).create({
                 'payment_date': receipt_date,
                 'journal_id': journal.id,
@@ -111,31 +113,3 @@ class AccountPayment(models.Model):
 
         except Exception as e:
             return False
-
-    def get_receipt_data(self, receipt_id):
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
-        if not access_token:
-            _logger.error("Access token not found in system parameters.")
-            return None
-
-        endpoint = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_receipts/{receipt_id}"
-
-        try:
-            response = self.env['toc.api'].toc_request(
-                method='GET',
-                url=endpoint,
-                access_token=access_token,
-            )
-
-            data = response.json()
-
-            if isinstance(data, list) and len(data) > 0:
-                return data[0]
-            elif isinstance(data, dict):
-                return data
-            else:
-                return None
-
-        except Exception as e:
-            _logger.error(f"Error fetching receipt {receipt_id} from TOConline: {str(e)}")
-            return None

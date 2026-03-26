@@ -1,16 +1,14 @@
 import logging
-from datetime import datetime, date
-import requests
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
+from .toc_online_service import TocOnlineService
 
 _logger = logging.getLogger(__name__)
 
 
-
-class CreditNoteSync(models.Model):
+class CreditNoteSync(models.AbstractModel):
     _name = 'credit.note.sync'
     _description = 'Sync Credit Notes from TOConline'
 
@@ -23,28 +21,33 @@ class CreditNoteSync(models.Model):
         toc_company_id = toc_document_data.get('company_id')
         company = self.env['res.company'].search([('toc_company_id', '=', toc_company_id)], limit=1)
         if not company:
-            raise UserError(f"Company with TOConline ID {toc_company_id} not found in Odoo.")
+            raise UserError(_("Company with TOConline ID %s not found in Odoo.") % toc_company_id)
 
-        toc_document = self._get_toc_document_by_id(toc_document_id, company)
+        service = TocOnlineService(company, self.env)
+        toc_document = service.get_document_by_id(toc_document_id)
         if not toc_document:
-            raise UserError(f"Credit note {document_no} not found in TOConline.")
+            raise UserError(_("Credit note %s not found in TOConline.") % document_no)
 
         if not isinstance(toc_document, dict):
-            raise UserError(f"Unexpected format for TOConline document: {type(toc_document)}")
+            raise UserError(_("Unexpected format for TOConline document: %s") % type(toc_document))
 
         toc_client_id = toc_document.get('customer_id')
-        partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
+        partner = self.env['res.partner'].with_company(company).search(
+            [('toc_online_id', '=', toc_client_id)], limit=1,
+        )
         if not partner:
-            raise UserError(f"Customer with TOConline ID {toc_client_id} not found in Odoo.")
+            raise UserError(_("Customer with TOConline ID %s not found in Odoo.") % toc_client_id)
 
         parent_doc_no = toc_document.get('parent_document_reference')
         if not parent_doc_no:
-            raise UserError(f"Credit note {document_no} has no reference to the original invoice.")
+            raise UserError(_("Credit note %s has no reference to the original invoice.") % document_no)
 
         invoice = self.env['account.move'].search([('toc_document_no', '=', parent_doc_no)], limit=1)
 
         if not invoice:
-            raise UserError(f"Original invoice with TOConline number {parent_doc_no} not found in Odoo.")
+            raise UserError(
+                _("Original invoice with TOConline number %s not found in Odoo.") % parent_doc_no
+            )
 
         self = self.with_company(company).sudo()
 
@@ -60,7 +63,7 @@ class CreditNoteSync(models.Model):
         credit_note = reverse_moves and reverse_moves[0]
 
         if not credit_note:
-            raise UserError(f"Failed to create credit note from invoice {invoice.name}")
+            raise UserError(_("Failed to create credit note from invoice %s") % invoice.name)
 
         line_data = toc_document_data.get('lines', [{}])[0]
 
@@ -79,25 +82,5 @@ class CreditNoteSync(models.Model):
 
         credit_note.action_post()
 
-        _logger.info(f"Credit note {document_no} successfully created in Odoo.")
+        _logger.info("Credit note %s successfully created in Odoo.", document_no)
         return credit_note
-
-    def _get_toc_document_by_id(self, toc_document_id, company):
-        """Retrieve a single TOConline document by ID for a specific company"""
-
-        access_token = self.env['toc.api'].get_access_token(company=company)
-        if not access_token:
-            raise UserError(f"TOConline access token not found for company {company.name}.")
-
-        url = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_documents/{toc_document_id}"
-
-        try:
-            response = self.env['toc.api'].toc_request(
-                method='GET',
-                url=url,
-                access_token=access_token,
-            )
-            return response.json()
-        except Exception as e:
-            _logger.error(f"Error fetching TOConline document ID {toc_document_id}: {str(e)}")
-            return None

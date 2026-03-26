@@ -1,6 +1,8 @@
 from odoo import models, api, _
 import logging
 
+from .toc_online_service import TocOnlineService
+
 _logger = logging.getLogger(__name__)
 
 
@@ -9,8 +11,14 @@ class AccountL10nPtVatExemptReason(models.Model):
 
     @api.model
     def cron_update_vat_exemption_reasons(self):
-        toc_api = self.env['toc.api']
-        reasons_data = toc_api.fetch_vat_exemption_reasons()
+        company = self.env['res.company'].sudo().search(
+            [('toc_online_enabled', '=', True)], limit=1,
+        )
+        if not company:
+            return
+
+        service = TocOnlineService(company, self.env)
+        reasons_data = service.fetch_vat_exemption_reasons()
 
         if not reasons_data:
             return

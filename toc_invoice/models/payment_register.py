@@ -1,10 +1,9 @@
 import json
-import requests
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
-
+from .toc_online_service import TocOnlineService
 
 
 class AccountPaymentRegister(models.TransientModel):
@@ -13,9 +12,7 @@ class AccountPaymentRegister(models.TransientModel):
     def action_create_payments(self):
         res = super().action_create_payments()
         for wizard in self:
-            access_token = self.env['toc.api'].get_access_token()
-            if not access_token:
-                raise UserError(_("TOConline access token not found"))
+            service = TocOnlineService(wizard.company_id, self.env)
 
             if not wizard.partner_id:
                 raise UserError(_("Payment must have an associated partner"))
@@ -24,7 +21,6 @@ class AccountPaymentRegister(models.TransientModel):
                 raise UserError(_("Payment amount cannot be 0"))
 
             partner = wizard.partner_id
-            company = wizard.company_id
             currency = wizard.currency_id
             date = wizard.payment_date or fields.Date.today()
 
@@ -35,11 +31,11 @@ class AccountPaymentRegister(models.TransientModel):
             invoice = self.env['account.move'].browse(invoice_id)
             document_no = invoice.get_ID_invoice()
 
-            doc_id = invoice.get_document_field_by_number(access_token, document_no, "id")
-            user_id = invoice.get_document_field_by_number(access_token, document_no, "user_id")
-            company_id = invoice.get_document_field_by_number(access_token, document_no, "company_id")
-            customer_id = invoice.get_document_field_by_number(access_token, document_no, "customer_id")
-            ammount = invoice.get_document_field_by_number(access_token, document_no, "gross_total")
+            doc_id = service.get_document_field_by_number(document_no, "id")
+            user_id = service.get_document_field_by_number(document_no, "user_id")
+            company_id = service.get_document_field_by_number(document_no, "company_id")
+            customer_id = service.get_document_field_by_number(document_no, "customer_id")
+            amount = service.get_document_field_by_number(document_no, "gross_total")
 
             lines = [{
                 "cashed_vat_amount": None,
@@ -72,17 +68,10 @@ class AccountPaymentRegister(models.TransientModel):
                 "user_id": user_id,
             }
 
-            endpoint = f"{self.env.company.toc_api_url}/api/v1/commercial_sales_receipts"
-
             try:
-                response = self.env['toc.api'].toc_request(
-                    method='POST',
-                    url=endpoint,
-                    payload=payload,
-                    access_token=access_token,
-                )
+                response = service.create_receipt(payload)
             except Exception as e:
-                raise UserError(f"Error sending payment: {str(e)}")
+                raise UserError(_("Error sending payment: %s") % str(e))
 
             toc_receipt_data = response.json()
             receipt_id = toc_receipt_data.get("id")
@@ -96,4 +85,3 @@ class AccountPaymentRegister(models.TransientModel):
             self.env.cr.commit()
 
         return res
-

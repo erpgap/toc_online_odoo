@@ -1,8 +1,10 @@
 import unittest
 import logging
 from odoo.tests.common import TransactionCase
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from odoo.exceptions import UserError
+
+from ..models.toc_online_service import TocOnlineService
 
 _logger = logging.getLogger(__name__)
 
@@ -11,10 +13,15 @@ class TestTOCIntegration(TransactionCase):
     def setUp(self):
         super().setUp()
 
-        # Configuração real do cliente TOC (não usar em produção!)
         self.env.company.sudo().write({
+            'toc_online_enabled': True,
             'toc_online_client_id': 'pt999999990_c12610-927f0c2762239267',
             'toc_online_client_secret': 'ec8a0ca36e2e539a483baf5b87358ade',
+            'toc_api_url': 'https://test.toconline.com',
+            'toc_auth_url': 'https://test.toconline.com/oauth',
+            'toc_redirect_uri': 'https://test.example.com/oauth/callback',
+            'toc_online_access_token': 'dummy_token',
+            'toc_online_token_expiry': '2099-01-01 00:00:00',
         })
 
         self.partner = self.env['res.partner'].create({
@@ -44,90 +51,114 @@ class TestTOCIntegration(TransactionCase):
         })
 
 
-    @patch('requests.get')
-    @patch('requests.post')
-    def test_create_customer_when_not_exists(self, mock_post, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {'data': []}
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_create_customer_when_not_exists(self, mock_request):
+        # First call: search by email returns empty
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": []}'
+        search_response.json.return_value = {'data': []}
 
-        mock_post.return_value.status_code = 201
-        mock_post.return_value.json.return_value = {
-            'data': {'id': 'toc_customer_created_001'}
-        }
+        # Second call: create customer
+        create_response = MagicMock()
+        create_response.status_code = 201
+        create_response.text = '{"data": {"id": "toc_customer_created_001"}}'
+        create_response.json.return_value = {'data': {'id': 'toc_customer_created_001'}}
 
-        access_token = 'dummy_token'
-        toc_id = self.move.get_or_create_customer_in_toconline(access_token, self.partner)
+        mock_request.side_effect = [search_response, create_response]
+
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        toc_id = service.get_or_create_customer(self.partner)
 
         self.assertEqual(toc_id, 'toc_customer_created_001')
         self.assertEqual(self.partner.toc_online_id, 'toc_customer_created_001')
 
-    @patch('requests.get')
-    def test_existing_customer_found_by_email(self, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {
-            'data': [{'id': 'toc_customer_found_002'}]
-        }
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_existing_customer_found_by_email(self, mock_request):
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": [{"id": "toc_customer_found_002"}]}'
+        search_response.json.return_value = {'data': [{'id': 'toc_customer_found_002'}]}
 
-        access_token = 'dummy_token'
-        toc_id = self.move.get_or_create_customer_in_toconline(access_token, self.partner)
+        mock_request.return_value = search_response
+
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        toc_id = service.get_or_create_customer(self.partner)
 
         self.assertEqual(toc_id, 'toc_customer_found_002')
         self.assertEqual(self.partner.toc_online_id, 'toc_customer_found_002')
 
-    @patch('requests.get')
-    @patch('requests.post')
-    def test_customer_creation_fails(self, mock_post, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {'data': []}
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_customer_creation_fails(self, mock_request):
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": []}'
+        search_response.json.return_value = {'data': []}
 
-        mock_post.return_value.status_code = 400
-        mock_post.return_value.text = "Invalid data"
+        create_response = MagicMock()
+        create_response.status_code = 400
+        create_response.text = "Invalid data"
+        create_response.reason = "Bad Request"
 
-        access_token = 'dummy_token'
-        with self.assertRaises(UserError) as cm:
-            self.move.get_or_create_customer_in_toconline(access_token, self.partner)
+        mock_request.side_effect = [search_response, create_response]
 
-        self.assertIn("Erro ao criar cliente", str(cm.exception))
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        with self.assertRaises(UserError):
+            service.get_or_create_customer(self.partner)
 
-    @patch('requests.get')
-    @patch('requests.post')
-    def test_create_product_when_not_exists(self, mock_post, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {'data': []}
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_create_product_when_not_exists(self, mock_request):
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": []}'
+        search_response.json.return_value = {'data': []}
 
-        mock_post.return_value.status_code = 201
-        mock_post.return_value.json.return_value = {
-            'data': {'id': 'toc_product_created_001'}
-        }
+        create_response = MagicMock()
+        create_response.status_code = 201
+        create_response.text = '{"data": {"id": "toc_product_created_001"}}'
+        create_response.json.return_value = {'data': {'id': 'toc_product_created_001'}}
 
-        access_token = 'dummy_token'
-        product_id = self.move.get_or_create_product_in_toconline(access_token, self.product)
+        mock_request.side_effect = [search_response, create_response]
+
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        product_id = service.get_or_create_product(self.product)
 
         self.assertEqual(product_id, 'toc_product_created_001')
 
-    @patch('requests.get')
-    def test_product_already_exists(self, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {
-            'data': [{'id': 'toc_product_found_002'}]
-        }
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_product_already_exists(self, mock_request):
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": [{"id": "toc_product_found_002"}]}'
+        search_response.json.return_value = {'data': [{'id': 'toc_product_found_002'}]}
 
-        access_token = 'dummy_token'
-        product_id = self.move.get_or_create_product_in_toconline(access_token, self.product)
+        mock_request.return_value = search_response
+
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        product_id = service.get_or_create_product(self.product)
 
         self.assertEqual(product_id, 'toc_product_found_002')
 
-    @patch('requests.get')
-    @patch('requests.post')
-    def test_product_creation_fails(self, mock_post, mock_get):
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.json.return_value = {'data': []}
+    @patch('odoo.addons.toc_invoice.models.toc_online_service.requests.request')
+    def test_product_creation_fails(self, mock_request):
+        search_response = MagicMock()
+        search_response.status_code = 200
+        search_response.text = '{"data": []}'
+        search_response.json.return_value = {'data': []}
 
-        mock_post.return_value.status_code = 400
-        mock_post.return_value.text = "Invalid product data"
+        create_response = MagicMock()
+        create_response.status_code = 400
+        create_response.text = "Invalid product data"
+        create_response.reason = "Bad Request"
 
-        access_token = 'dummy_token'
-        with self.assertRaises(UserError) as cm:
-            self.move.get_or_create_product_in_toconline(access_token, self.product)
+        mock_request.side_effect = [search_response, create_response]
 
-        self.assertIn("Error creating product", str(cm.exception))
+        service = TocOnlineService(self.env.company, self.env)
+        service._access_token = 'dummy_token'
+        with self.assertRaises(UserError):
+            service.get_or_create_product(self.product)

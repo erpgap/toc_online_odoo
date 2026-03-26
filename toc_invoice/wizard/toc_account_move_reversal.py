@@ -1,6 +1,8 @@
-from odoo import models, fields, api , _
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError
-import requests
+
+from ..models.toc_online_service import TocOnlineService
+
 
 class CreditNoteWizard(models.TransientModel):
     _name = 'credit.note.wizard'
@@ -56,39 +58,6 @@ class CreditNoteWizard(models.TransientModel):
 
         return res
 
-    def get_document_lines(self, base_url, access_token, document_no):
-        """
-        Gets the lines of a sales document from the TOConline API.
-
-        :param base_url: TOConline API base URL
-        :param access_token: Bearer authentication token
-        :param document_no: Document number to be queried
-        :return: List of document lines or None in case of error
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {access_token}"
-        }
-
-        url = f"{base_url}/api/v1/commercial_sales_documents?filter[document_no]={document_no}"
-
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-
-            if isinstance(data, list) and len(data) > 0:
-                data = data[0]
-
-            if isinstance(data, dict):
-                return data
-            else:
-                return None
-
-        except requests.exceptions.RequestException as e:
-            return None
-
-
     @api.onchange('item_code')
     def _onchange_item_code(self):
         if self.item_code:
@@ -113,27 +82,23 @@ class CreditNoteWizard(models.TransientModel):
         if not self.invoice_id.toc_status_credit_note:
             raise UserError(_("A credit note has already been created for this invoice."))
 
-        access_token = self.env['toc.api'].get_access_token()
-        if not access_token:
-            raise UserError(_("TOConline access token not found."))
+        service = TocOnlineService(self.invoice_id.company_id, self.env)
 
-        url_base = self.invoice_id.get_base_url()
         invoice_toc_document_no = self.invoice_id.toc_document_no
+        document_data = service.get_document_lines(invoice_toc_document_no)
 
-        document_data = self.get_document_lines(url_base, access_token, invoice_toc_document_no)
+        company = self.invoice_id.company_id
+        state_name = company.partner_id.state_id.name if company.partner_id.state_id else ""
+        tax_region = TocOnlineService.get_tax_region(state_name)
 
-        tax_region = self.invoice_id.getStateCompany()
-        region_map = {"Madeira": "PT-MA", "Açores": "PT-AC", "Continente": "PT"}
-        tax_region = region_map.get(tax_region, "PT")
-
-        taxes_data = self.invoice_id.get_taxes_from_toconline(access_token)
+        taxes_data = service.get_taxes()
         filtered_taxes = [
             tax for tax in taxes_data
             if tax["attributes"]["tax_country_region"] == tax_region
         ]
 
         tax_percentage = self.tax_percentage
-        tax_info = self.invoice_id.get_tax_info(tax_percentage, tax_region, filtered_taxes)
+        tax_info = service.get_tax_info(tax_percentage, tax_region, filtered_taxes)
         tax_code = tax_info["code"]
 
         global_exemption_reason = None
@@ -181,11 +146,9 @@ class CreditNoteWizard(models.TransientModel):
             }],
         }
 
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-        response = requests.post(f"{url_base}/api/v1/commercial_sales_documents", json=payload, headers=headers)
+        response = service.send_document(payload)
 
         variavel_auc = self.unit_price*self.quantity
-
 
         self.total_value = variavel_auc
 
@@ -196,7 +159,7 @@ class CreditNoteWizard(models.TransientModel):
         if response.status_code == 200:
             self.invoice_id.set_toc_status_credit_note('sent')
         if response.status_code != 200:
-            raise UserError(_(f"Error sending credit note: {response.text}"))
+            raise UserError(_("Error sending credit note: %s") % response.text)
 
         response_data = response.json()
 
@@ -216,7 +179,8 @@ class CreditNoteWizard(models.TransientModel):
 
             if not tax:
                 raise UserError(
-                    _(f"Tax with {self.tax_percentage}% not found in the system. Check tax configuration."))
+                    _("Tax with %s%% not found in the system. Check tax configuration.") % self.tax_percentage
+                )
 
             line.write({
                 'product_id': self.item_code.id,
@@ -237,5 +201,3 @@ class CreditNoteWizard(models.TransientModel):
 
         credit_note.env.cr.commit()
         return {'type': 'ir.actions.act_window_close'}
-
-

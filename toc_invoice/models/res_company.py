@@ -18,3 +18,6 @@ class ResCompany(models.Model):
     toc_redirect_uri = fields.Char(
         string="Redirect URI",
     )
+    toc_online_access_token = fields.Char(string="Access Token", copy=False, groups="base.group_system")
+    toc_online_refresh_token = fields.Char(string="Refresh Token", copy=False, groups="base.group_system")
+    toc_online_token_expiry = fields.Datetime(string="Token Expiry", copy=False, groups="base.group_system")
