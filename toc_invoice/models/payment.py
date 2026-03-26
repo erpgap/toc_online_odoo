@@ -42,7 +42,9 @@ class AccountPayment(models.Model):
             for line in invoice.invoice_line_ids:
                 for tax in line.tax_ids:
                     if tax.amount == 0 and not invoice.tax_exemption_reason:
-                        raise UserError(f"Cannot validate invoice {invoice.name} with VAT exemption without a reason.")
+                        raise UserError(
+                            _("Cannot validate invoice %s with VAT exemption without a reason.") % invoice.name
+                        )
             invoice.action_post()
 
         company = invoice.company_id
@@ -79,13 +81,9 @@ class AccountPayment(models.Model):
 
         payment_method_line = journal.inbound_payment_method_line_ids[:1]
         if not payment_method_line:
-            raise UserError(f"Journal '{journal.name}' has no payment methods.")
+            raise UserError(_("Journal '%s' has no payment methods.") % journal.name)
 
         try:
-            invoice._message_log(
-                body=f"Payment TOC automatically created for receipt {receipt_id_str}"
-            )
-
             register_pay = self.env['account.payment.register'].with_context(
                 active_model='account.move',
                 active_ids=[invoice.id]
@@ -101,15 +99,26 @@ class AccountPayment(models.Model):
             register_pay.action_create_payments()
             invoice._compute_amount()
 
-
             if receipt_id_str not in toc_receipt_ids:
                 toc_receipt_ids.append(receipt_id_str)
                 invoice.write({'toc_receipt_ids': json.dumps(toc_receipt_ids)})
                 invoice.flush_recordset()
                 invoice.invalidate_recordset()
 
-
+            invoice._message_log(
+                body=_("TOCOnline: Payment automatically created for receipt %s.") % receipt_id_str
+            )
             return True
 
-        except Exception as e:
+        except Exception:
+            _logger.exception(
+                "TOCOnline: Failed to create payment for receipt %s on invoice %s.",
+                receipt_id_str, invoice.name,
+            )
+            invoice._message_log(
+                body=_(
+                    "TOCOnline: Failed to automatically create payment for receipt %s. "
+                    "Please check the server logs and create the payment manually."
+                ) % receipt_id_str
+            )
             return False

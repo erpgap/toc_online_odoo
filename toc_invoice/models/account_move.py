@@ -28,7 +28,7 @@ class AccountMove(models.Model):
         ('draft', 'draft'),
         ('sent', 'sent'),
         ('error', 'Error')
-    ], string="TOConline Status", default='draft')
+    ], string="TOConline Credit Note Status", default='draft')
 
 
     toc_invoice_url = fields.Char(string="TOConline Invoice URL")
@@ -96,18 +96,20 @@ class AccountMove(models.Model):
                 product = line.product_id
                 if product and not product.default_code:
                     raise ValidationError(
-                        f"The product '{product.name}' must have an internal reference (default_code) set."
+                        _("The product '%s' must have an internal reference (default_code) set.") % product.name
                     )
 
     @api.constrains('invoice_date', 'invoice_date_due')
     def _check_invoice_dates(self):
         today = date.today()
         for record in self:
-            if record.toc_status != 'sent' and record.toc_status != 'cancelled':
+            if not (record.company_id.toc_online_enabled and record.journal_id.send_to_toconline):
+                continue
+            if record.toc_status not in ('sent', 'cancelled'):
                 if record.invoice_date and record.invoice_date < today:
-                    raise ValidationError("The invoice date must be today or a future date.")
+                    raise ValidationError(_("The invoice date must be today or a future date."))
                 if record.invoice_date_due and record.invoice_date_due < today:
-                    raise ValidationError("The due date must be today or a future date.")
+                    raise ValidationError(_("The due date must be today or a future date."))
 
     @api.constrains('state')
     def _check_state_invoice(self):
@@ -166,13 +168,17 @@ class AccountMove(models.Model):
 
         res = super().action_post()
         for move in self:
+            if not (move.company_id.toc_online_enabled and move.journal_id.send_to_toconline):
+                continue
+            if not move.invoice_date:
+                continue
             previous_invoice = self.env['account.move'].search([
-                ('id', '=', move.id - 1),
                 ('move_type', '=', move.move_type),
                 ('journal_id', '=', move.journal_id.id),
                 ('company_id', '=', move.company_id.id),
                 ('state', '=', 'draft'),
-            ], limit=1)
+                ('invoice_date', '<', move.invoice_date),
+            ], order='invoice_date asc', limit=1)
 
             if previous_invoice:
                 raise UserError(_(
@@ -356,7 +362,7 @@ class AccountMove(models.Model):
                 currency_obj, company_currency, record.company_id, invoice_date_to_send
             ),
             "apply_retention_when_paid": True,
-            "notes": "Notes to the document",
+            "notes": record.narration or "",
             "tax_exemption_reason_id": exemption_reason,
             "lines": lines,
         }
@@ -383,12 +389,12 @@ class AccountMove(models.Model):
         for record in self:
 
             newer_invoice = self.env['account.move'].search([
-                ('id', '>', record.id),
                 ('move_type', '=', record.move_type),
                 ('journal_id', '=', record.journal_id.id),
                 ('company_id', '=', record.company_id.id),
                 ('state', 'in', ['posted', 'cancel']),
-            ], order='id asc', limit=1)
+                ('invoice_date', '>', record.invoice_date),
+            ], order='invoice_date asc', limit=1)
 
             if newer_invoice:
                 raise UserError(_(
@@ -425,9 +431,8 @@ class AccountMove(models.Model):
                     'toc_status': 'cancelled',
                     'cancellation_reason': cancel_reason,
                     'cancellation_date': cancel_date,
-                    'state': 'cancel'
                 })
-                self.env.cr.commit()
+                record.button_cancel()
                 try:
                     public_link = attributes.get("public_link")
                     if public_link:
@@ -451,7 +456,7 @@ class AccountMove(models.Model):
                             "Technical error: %s"
                         ) % str(e))
             else:
-                record.state = 'cancel'
+                record.button_cancel()
 
     def open_credit_note_wizard(self):
         self.ensure_one()
