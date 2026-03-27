@@ -16,18 +16,16 @@
 <!--    </record>-->
 
 
-<record id="view_order_form_inherit_vat_reason" model="ir.ui.view">
-    <field name="name">sale.order.form.vat.reason</field>
-    <field name="model">sale.order</field>
-    <field name="inherit_id" ref="sale.view_order_form"/>
-    <field name="arch" type="xml">
-
-        <xpath expr="//field[@name='order_line']/list/field[@name='tax_ids']" position="after">
-            <field name="l10npt_vat_exempt_reason"/>
-        </xpath>
-
-    </field>
-</record>
+<!--    <record id="view_order_form_inherit_vat_reason" model="ir.ui.view">-->
+<!--        <field name="name">sale.order.form.vat.reason</field>-->
+<!--        <field name="model">sale.order</field>-->
+<!--        <field name="inherit_id" ref="sale.view_order_form"/>-->
+<!--        <field name="arch" type="xml">-->
+<!--            <xpath expr="//field[@name='order_line']/list/field[@name='tax_ids']" position="after">-->
+<!--                <field name="l10npt_vat_exempt_reason"/>-->
+<!--            </xpath>-->
+<!--        </field>-->
+<!--    </record>-->
 
     <record id="view_account_move_form_inherit_toconline" model="ir.ui.view">
         <field name="name">account.move.form.inherit.toconline</field>
@@ -104,13 +102,9 @@
                         invisible="1"/>
             </xpath>
 
-            <xpath expr="//group//div[@class='d-flex']" position="after">
-                <div style="display: flex; align-items: center; margin-right: 20px;">
-                    <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;"
-                           invisible="toc_status != 'sent'"/>
-                    <field name="checkbox" class="my-green-checkbox"
-                           readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
-                </div>
+            <xpath expr="//div[@name='journal_div']" position="after">
+                <field name="checkbox" class="my-green-checkbox" string="TOConline"
+                        readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
             </xpath>
 
             <xpath expr="//field[@name='partner_id']" position="after">

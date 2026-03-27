@@ -10,3 +10,5 @@ from . import account_journal
 from . import toc_vat_exemption
 from . import stock_picking
 from . import sale_order_line
+from . import repair_order
+from . import stock_move

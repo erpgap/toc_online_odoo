@@ -1,12 +1,30 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, Command
 from odoo.exceptions import ValidationError
 from odoo import _
-
-from odoo import models
 
 
 class SaleOrder(models.Model):
     _inherit = "sale.order"
+
+    l10npt_vat_exempt_reason = fields.Many2one(
+        "account.l10n_pt.vat.exempt.reason",
+        string="VAT Exempt Reason",
+    )
+
+    @api.constrains("order_line")
+    def _check_vat_exempt_reason(self):
+        for order in self:
+            if not order.company_id.toc_online_enabled:
+                continue
+            zero_tax_lines = order.order_line.filtered(
+                lambda l: any(round(t.amount, 2) == 0.0 for t in l.tax_ids.filtered(
+                    lambda t: t.type_tax_use == "sale"
+                ))
+            )
+            if zero_tax_lines and not order.l10npt_vat_exempt_reason:
+                raise ValidationError(
+                    _("Esta encomenda possui linhas com IVA 0%%. É obrigatório informar o motivo de isenção.")
+                )
 
     def _create_invoices(self, grouped=False, final=False, date=None):
         invoices = super()._create_invoices(grouped=grouped, final=final, date=date)
@@ -22,13 +40,15 @@ class SaleOrder(models.Model):
                         exempt_reason = line.l10npt_vat_exempt_reason.id
                         break
 
+            if not exempt_reason and order.l10npt_vat_exempt_reason:
+                exempt_reason = order.l10npt_vat_exempt_reason.id
+
             if exempt_reason:
                 invoices.filtered(lambda m: m.invoice_origin == order.name).write({
                     "l10npt_vat_exempt_reason": exempt_reason
                 })
 
         return invoices
-
 
 
 class SaleOrderLine(models.Model):
@@ -55,17 +75,17 @@ class SaleOrderLine(models.Model):
     def _compute_l10npt_vat_exempt_reason(self):
         for line in self:
             zero_tax = line.tax_ids.filtered(
-                lambda t: t.amount == '0' and t.type_tax_use == "sale"
+                lambda t: round(t.amount, 2) == 0.0 and t.type_tax_use == "sale"
             )
 
-            if zero_tax:
+            if zero_tax and not line.l10npt_vat_exempt_reason:
                 # pega motivo padrão M01 (Artigo 53º)
                 reason = self.env["account.l10n_pt.vat.exempt.reason"].search(
                     [("code", "=", "M01")],
                     limit=1,
                 )
                 line.l10npt_vat_exempt_reason = reason
-            else:
+            elif not zero_tax:
                 line.l10npt_vat_exempt_reason = False
 
     @api.constrains("tax_ids", "l10npt_vat_exempt_reason")
