@@ -92,6 +92,8 @@ class AccountMove(models.Model):
     @api.constrains('invoice_line_ids')
     def _check_product_internal_reference(self):
         for record in self:
+            if not (record.company_id.toc_online_enabled and record.journal_id.send_to_toconline):
+                continue
             for line in record.invoice_line_ids:
                 product = line.product_id
                 if product and not product.default_code:
@@ -181,9 +183,10 @@ class AccountMove(models.Model):
             ], order='invoice_date asc', limit=1)
 
             if previous_invoice:
+                ref = previous_invoice.name or previous_invoice.ref or str(previous_invoice.invoice_date)
                 raise UserError(_(
                     "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
-                ) % previous_invoice.name)
+                ) % ref)
 
             if move.company_id.toc_online_enabled and move.journal_id.send_to_toconline:
                 move.action_send_invoice_to_toconline()

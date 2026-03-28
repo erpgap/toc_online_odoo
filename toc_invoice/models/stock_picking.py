@@ -88,9 +88,9 @@ class StockPicking(models.Model):
                 elif tax_percentage == 0:
                     tax_code = "ISE"
 
-                    if sale_line and sale_line.l10npt_vat_exempt_reason:
+                    if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
                         tax_exemption_reason = (
-                            sale_line.l10npt_vat_exempt_reason.code
+                            sale_line.order_id.l10npt_vat_exempt_reason.code
                         )
                     else:
                         raise UserError(
@@ -170,8 +170,8 @@ class StockPicking(models.Model):
         for move in self.move_ids:
             sale_line = move.sale_line_id
 
-            if sale_line and sale_line.l10npt_vat_exempt_reason:
-                tax_exemption_reason = sale_line.l10npt_vat_exempt_reason.code
+            if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
+                tax_exemption_reason = sale_line.order_id.l10npt_vat_exempt_reason.code
                 if not tax_exemption_reason:
                     raise UserError(
                         _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")

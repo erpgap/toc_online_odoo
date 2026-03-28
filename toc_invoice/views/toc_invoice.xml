@@ -1,31 +1,19 @@
 <odoo>
-
-<!--    <record id="view_order_form_inherit_vat_reason" model="ir.ui.view">-->
-<!--        <field name="name">sale.order.form.vat.reason</field>-->
-<!--        <field name="model">sale.order</field>-->
-<!--        <field name="inherit_id" ref="sale.view_order_form"/>-->
-<!--        <field name="arch" type="xml">-->
-
-<!--            &lt;!&ndash; Inserir campo na lista de linhas &ndash;&gt;-->
-<!--            <xpath expr="//field[@name='order_line']//field[@name='tax_id']" position="after">-->
-<!--                <field name="l10npt_vat_exempt_reason"-->
-<!--                       attrs="{'invisible': [('tax_id.amount', '!=', 0)]}"/>-->
-<!--            </xpath>-->
-
-<!--        </field>-->
-<!--    </record>-->
-
-
-<!--    <record id="view_order_form_inherit_vat_reason" model="ir.ui.view">-->
-<!--        <field name="name">sale.order.form.vat.reason</field>-->
-<!--        <field name="model">sale.order</field>-->
-<!--        <field name="inherit_id" ref="sale.view_order_form"/>-->
-<!--        <field name="arch" type="xml">-->
-<!--            <xpath expr="//field[@name='order_line']/list/field[@name='tax_ids']" position="after">-->
-<!--                <field name="l10npt_vat_exempt_reason"/>-->
-<!--            </xpath>-->
-<!--        </field>-->
-<!--    </record>-->
+    <record id="view_invoice_tree_toconline" model="ir.ui.view">
+        <field name="name">account.invoice.list.toconline</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_invoice_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="toc_display_number"/>
+            </xpath>
+            <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
+                <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund',
+                    'out_receipt')
+                </attribute>
+            </xpath>
+        </field>
+    </record>
 
     <record id="view_account_move_form_inherit_toconline" model="ir.ui.view">
         <field name="name">account.move.form.inherit.toconline</field>
@@ -105,6 +93,7 @@
             <xpath expr="//div[@name='journal_div']" position="after">
                 <field name="checkbox" class="my-green-checkbox" string="TOConline"
                         readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
+                <field name="l10npt_vat_exempt_reason" invisible="is_l10npt_vat_enabled"/>
             </xpath>
 
             <xpath expr="//field[@name='partner_id']" position="after">

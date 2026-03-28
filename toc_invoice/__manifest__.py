@@ -15,9 +15,8 @@
         'views/res_company_views.xml',
         'views/res_partner_views.xml',
         'wizard/toc_account_move_reversal.xml',
-        'views/toc_credit_note.xml',
+        'views/sale_order_view.xml',
         'views/repair_form.xml',
-        'views/toc_invoice_list.xml',
         'wizard/toc_cancel_invoice.xml',
     ],
     'assets':{
