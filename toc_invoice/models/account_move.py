@@ -5,6 +5,7 @@ from markupsafe import Markup
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import html2plaintext
 
 from datetime import timedelta
 
@@ -365,7 +366,7 @@ class AccountMove(models.Model):
                 currency_obj, company_currency, record.company_id, invoice_date_to_send
             ),
             "apply_retention_when_paid": True,
-            "notes": record.narration or "",
+            "notes": html2plaintext(record.narration or "")[:400],
             "tax_exemption_reason_id": exemption_reason,
             "lines": lines,
         }

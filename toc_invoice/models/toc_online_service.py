@@ -285,11 +285,22 @@ class TocOnlineService:
     # C. Customer management
     # -----------------------------------------------------------------
 
+    @staticmethod
+    def _sanitize_vat(vat):
+        """Strip country prefix and whitespace from VAT, returning digits only."""
+        if not vat:
+            return "999999990"
+        vat = vat.replace(" ", "").strip()
+        # Remove leading country code (e.g. "PT" from "PT502992824")
+        if len(vat) > 2 and vat[:2].isalpha():
+            vat = vat[2:]
+        return vat
+
     def get_or_create_customer(self, partner):
         if partner.toc_online_id:
             return partner.toc_online_id
 
-        tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "999999990"
+        tax_number = self._sanitize_vat(partner.vat)
         email = partner.email.strip() if partner.email else ""
 
         # Search by VAT
