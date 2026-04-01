@@ -1,4 +1,5 @@
 import logging
+import pytz
 
 from odoo import models, fields, _
 from odoo.exceptions import UserError
@@ -140,7 +141,8 @@ class StockPicking(models.Model):
         from_partner = warehouse.partner_id or self.company_id.partner_id
         to_partner = self.company_id.partner_id
 
-        loading_time = self.date_done or fields.Datetime.now()
+        current_datetime = fields.Datetime.now()
+        loading_time = self.scheduled_date if self.scheduled_date and self.scheduled_date >= current_datetime else current_datetime
 
         def zip_pt(zip_code):
             if not zip_code:
@@ -214,6 +216,7 @@ class StockPicking(models.Model):
             "shipment_city": partner.city or "",
             "shipment_postcode": zip_pt(partner.zip),
             "shipment_country": partner.country_id.code or "PT",
+            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(pytz.timezone('Europe/Lisbon')).strftime("%Y-%m-%dT%H:%M:%S%z"),
             "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
