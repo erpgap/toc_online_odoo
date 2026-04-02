@@ -1,5 +1,6 @@
 import logging
 import base64
+import pytz
 import requests
 
 from odoo import models, fields, _
@@ -106,9 +107,9 @@ class StockPicking(models.Model):
                 elif tax_percentage == 0:
                     tax_code = "ISE"
 
-                    if sale_line and sale_line.l10npt_vat_exempt_reason:
+                    if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
                         tax_exemption_reason = (
-                            sale_line.l10npt_vat_exempt_reason.code
+                            sale_line.order_id.l10npt_vat_exempt_reason.code
                         )
                     else:
                         raise UserError(
@@ -159,7 +160,8 @@ class StockPicking(models.Model):
         to_partner = self.env.company
         # to_partner = self.partner_id
 
-        loading_time = self.date_done or fields.Datetime.now()
+        current_datetime = fields.Datetime.now()
+        loading_time = self.scheduled_date if self.scheduled_date and self.scheduled_date >= current_datetime else current_datetime
 
         def zip_pt(zip_code):
             if not zip_code:
@@ -192,8 +194,8 @@ class StockPicking(models.Model):
         for move in self.move_ids_without_package:
             sale_line = move.sale_line_id
 
-            if sale_line and sale_line.l10npt_vat_exempt_reason:
-                tax_exemption_reason = sale_line.l10npt_vat_exempt_reason.code
+            if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
+                tax_exemption_reason = sale_line.order_id.l10npt_vat_exempt_reason.code
                 if not tax_exemption_reason:
                     raise UserError(
                         _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
@@ -239,6 +241,7 @@ class StockPicking(models.Model):
             "shipment_city": partner.city or "",
             "shipment_postcode": zip_pt(partner.zip),
             "shipment_country": partner.country_id.code or "PT",
+            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(pytz.timezone('Europe/Lisbon')).strftime("%Y-%m-%dT%H:%M:%S%z"),
             "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }

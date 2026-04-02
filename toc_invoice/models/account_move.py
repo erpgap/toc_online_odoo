@@ -7,6 +7,7 @@ from markupsafe import Markup
 
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import html2plaintext
 
 from odoo.addons.toc_invoice.utils import TOC_BASE_URL
 from datetime import timedelta
@@ -298,6 +299,8 @@ class AccountMove(models.Model):
             return partner.toc_online_id
 
         tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "999999990"
+        if len(tax_number) > 2 and tax_number[:2].isalpha():
+            tax_number = tax_number[2:]
         email = partner.email.strip() if partner.email else ""
         customers = []
 
@@ -429,9 +432,10 @@ class AccountMove(models.Model):
             ], limit=1)
 
             if previous_invoice:
+                ref = previous_invoice.name or previous_invoice.ref or str(previous_invoice.invoice_date)
                 raise UserError(_(
                     "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
-                ) % previous_invoice.name)
+                ) % ref)
 
             if move.journal_id.send_to_toconline:
                 move.action_send_invoice_to_toconline()
@@ -630,7 +634,7 @@ class AccountMove(models.Model):
                 currency_obj, company_currency, record.company_id, invoice_date_to_send
             ),
             "apply_retention_when_paid": True,
-            "notes": "Notes to the document",
+            "notes": html2plaintext(record.narration or "")[:400],
             "tax_exemption_reason_id": exemption_reason,
             "lines": lines,
         }

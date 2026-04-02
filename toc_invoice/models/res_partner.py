@@ -41,6 +41,8 @@ class ResPartner(models.Model):
         update_url = f"{TOC_BASE_URL}/api/customers/{customer_id}"
 
         tax_number = self.vat.replace(" ", "").strip() if self.vat else "999999990"
+        if len(tax_number) > 2 and tax_number[:2].isalpha():
+            tax_number = tax_number[2:]
         email = self.email.strip() if self.email else ""
 
         customer_payload = {
