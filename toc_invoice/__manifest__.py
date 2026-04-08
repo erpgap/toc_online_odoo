@@ -16,6 +16,7 @@
         'views/res_partner_views.xml',
         'wizard/toc_account_move_reversal.xml',
         'views/sale_order_view.xml',
+        'views/stock_picking_view.xml',
         'views/repair_form.xml',
         'wizard/toc_cancel_invoice.xml',
     ],

@@ -1,8 +1,8 @@
 import logging
 import pytz
 
-from odoo import models, fields, _
-from odoo.exceptions import UserError
+from odoo import models, fields, api, _
+from odoo.exceptions import UserError, ValidationError
 
 from .toc_online_service import TocOnlineService
 
@@ -11,6 +11,11 @@ _logger = logging.getLogger(__name__)
 
 class StockPicking(models.Model):
     _inherit = "stock.picking"
+
+    l10npt_vat_exempt_reason = fields.Many2one(
+        "account.l10n_pt.vat.exempt.reason",
+        string="VAT Exempt Reason",
+    )
 
     toc_status = fields.Selection([
         ("draft", "Draft"),
@@ -29,6 +34,24 @@ class StockPicking(models.Model):
     # =====================================================
 
     def button_validate(self):
+        for picking in self:
+            if (
+                picking.picking_type_code == "outgoing"
+                and picking.company_id.toc_online_enabled
+                and not picking.l10npt_vat_exempt_reason
+            ):
+                has_exempt_lines = False
+                for move in picking.move_ids:
+                    taxes = False
+                    if move.sale_line_id:
+                        taxes = move.sale_line_id.tax_ids.filtered(lambda t: t.type_tax_use == "sale")
+                    if not taxes or any(round(t.amount, 2) == 0.0 for t in taxes):
+                        has_exempt_lines = True
+                        break
+                if has_exempt_lines:
+                    raise ValidationError(
+                        _("A tax exemption reason must be provided.")
+                    )
         res = super().button_validate()
         for picking in self:
             company = picking.company_id
@@ -89,10 +112,8 @@ class StockPicking(models.Model):
                 elif tax_percentage == 0:
                     tax_code = "ISE"
 
-                    if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
-                        tax_exemption_reason = (
-                            sale_line.order_id.l10npt_vat_exempt_reason.code
-                        )
+                    if self.l10npt_vat_exempt_reason:
+                        tax_exemption_reason = self.l10npt_vat_exempt_reason.code
                     else:
                         raise UserError(
                             _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
@@ -152,44 +173,15 @@ class StockPicking(models.Model):
                 return f"{digits[:4]}-{digits[4:7]}"
             return "0000-000"
 
-        if tax_percentage == 0:
-                if not tax_exemption_reason:
-                    raise UserError(
-                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                        % product.display_name
-                    )
-
-                exemption_id = service.get_tax_exemption_reason_id(tax_exemption_reason)
-
-                if not exemption_id:
-                    raise UserError(
-                        _("Motivo de isenção '%s' não encontrado no TOConline.")
-                        % tax_exemption_reason
-                    )
-
-                tax_exemption_reason = exemption_id
-
-        for move in self.move_ids:
-            sale_line = move.sale_line_id
-
-            if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
-                tax_exemption_reason = sale_line.order_id.l10npt_vat_exempt_reason.code
-                if not tax_exemption_reason:
-                    raise UserError(
-                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                        % product.display_name
-                    )
-
-                exemption_id = service.get_tax_exemption_reason_id(tax_exemption_reason)
-
-                if not exemption_id:
-                    raise UserError(
-                        _("Motivo de isenção '%s' não encontrado no TOConline.")
-                        % tax_exemption_reason
-                    )
-
-                tax_exemption_reason = exemption_id
-                break
+        if self.l10npt_vat_exempt_reason:
+            exemption_code = self.l10npt_vat_exempt_reason.code
+            exemption_id = service.get_tax_exemption_reason_id(exemption_code)
+            if not exemption_id:
+                raise UserError(
+                    _("Motivo de isenção '%s' não encontrado no TOConline.")
+                    % exemption_code
+                )
+            tax_exemption_reason = exemption_id
 
         payload = {
             "document_type": "GR",

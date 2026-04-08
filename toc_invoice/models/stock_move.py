@@ -10,6 +10,13 @@ class StockMove(models.Model):
         domain=[("type_tax_use", "=", "sale")],
     )
 
+    def _get_new_picking_values(self):
+        vals = super()._get_new_picking_values()
+        sale_order = self.sale_line_id.order_id[:1]
+        if sale_order and sale_order.l10npt_vat_exempt_reason:
+            vals["l10npt_vat_exempt_reason"] = sale_order.l10npt_vat_exempt_reason.id
+        return vals
+
     def _create_repair_sale_order_line(self):
         SaleOrderLine = self.env["sale.order.line"]
         for move in self:
