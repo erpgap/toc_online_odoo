@@ -41,7 +41,10 @@ class SaleOrderLine(models.Model):
 
     @api.constrains("tax_ids")
     def _check_tax_required(self):
-        for line in self:
+        product_lines = self.filtered(
+            lambda l: not l.display_type and l.order_id.company_id.toc_online_enabled
+        )
+        for line in product_lines:
             if not line.tax_ids:
                 raise ValidationError(
                     _("A linha '%s' precisa ter um imposto definido.")
