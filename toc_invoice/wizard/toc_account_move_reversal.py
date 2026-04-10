@@ -44,7 +44,7 @@ class CreditNoteWizard(models.TransientModel):
             })
 
             if invoice.invoice_line_ids:
-                first_line = invoice.invoice_line_ids.filtered(lambda l: l.product_id)[:1]
+                first_line = invoice.invoice_line_ids.filtered(lambda l: l.display_type == 'product' and not l.is_downpayment)[:1]
                 if first_line:
                     line = first_line[0]
                     res.update({
@@ -170,7 +170,7 @@ class CreditNoteWizard(models.TransientModel):
 
         credit_note = reverse_vals and reverse_vals[0]
 
-        cn_lines = credit_note.invoice_line_ids.filtered(lambda l: l.display_type == 'product')
+        cn_lines = credit_note.invoice_line_ids.filtered(lambda l: l.display_type == 'product' and not l.is_downpayment)
         if cn_lines:
             line = cn_lines[0]
             tax = self.env['account.tax'].search([
