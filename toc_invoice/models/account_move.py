@@ -256,7 +256,7 @@ class AccountMove(models.Model):
                         toc_document_id = response_data.get("id")
                         if toc_document_id:
                             service.download_and_attach_pdf(
-                                record, toc_document_id, f"Fatura_11112_{record.name}.pdf",
+                                record, toc_document_id, f"Fatura_{record.name}.pdf",
                                 message=_("PDF successfully downloaded and attached to the invoice."),
                             )
 
