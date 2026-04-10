@@ -39,10 +39,13 @@ class SaleOrder(models.Model):
 class SaleOrderLine(models.Model):
     _inherit = "sale.order.line"
 
-    @api.constrains("tax_ids")
+    @api.constrains("tax_ids", "state")
     def _check_tax_required(self):
         product_lines = self.filtered(
-            lambda l: not l.display_type and l.order_id.company_id.toc_online_enabled
+            lambda l: not l.display_type
+            and l.product_id
+            and l.order_id.company_id.toc_online_enabled
+            and l.order_id.state in ('sale', 'done')
         )
         for line in product_lines:
             if not line.tax_ids:

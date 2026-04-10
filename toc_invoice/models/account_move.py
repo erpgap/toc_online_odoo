@@ -95,7 +95,7 @@ class AccountMove(models.Model):
         for record in self:
             if not (record.company_id.toc_online_enabled and record.journal_id.send_to_toconline):
                 continue
-            for line in record.invoice_line_ids.filtered(lambda l: not l.display_type):
+            for line in record.invoice_line_ids.filtered(lambda l: l.display_type == 'product'):
                 product = line.product_id
                 if product and not product.default_code:
                     raise ValidationError(
@@ -283,7 +283,7 @@ class AccountMove(models.Model):
         lines = []
         global_exemption_reason = None
 
-        for line in record.invoice_line_ids.filtered(lambda rec:not rec.display_type):
+        for line in record.invoice_line_ids.filtered(lambda rec: rec.display_type == 'product'):
             product_id = service.get_or_create_product(line.product_id)
             tax_percentage = sum(t.amount for t in line.tax_ids) if line.tax_ids else 0
             tax_info = service.get_tax_info(tax_percentage, tax_region, filtered_taxes)
@@ -522,7 +522,7 @@ class AccountMove(models.Model):
             raise UserError(_("No lines found on the credit note."))
 
         lines = []
-        for line in self.invoice_line_ids.filtered(lambda l: not l.display_type):
+        for line in self.invoice_line_ids.filtered(lambda l: l.display_type == 'product'):
             product = line.product_id
             quantity = line.quantity
             unit_price = line.price_unit
@@ -552,7 +552,7 @@ class AccountMove(models.Model):
         global_exemption_reason = None
 
         zero_tax_line = self.invoice_line_ids.filtered(
-            lambda l: not l.display_type and any(round(t.amount, 2) == 0 for t in l.tax_ids)
+            lambda l: l.display_type == 'product' and any(round(t.amount, 2) == 0 for t in l.tax_ids)
         )[:1]
 
         if zero_tax_line:

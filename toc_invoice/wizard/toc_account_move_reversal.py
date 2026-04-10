@@ -170,7 +170,7 @@ class CreditNoteWizard(models.TransientModel):
 
         credit_note = reverse_vals and reverse_vals[0]
 
-        cn_lines = credit_note.invoice_line_ids.filtered(lambda l: not l.display_type)
+        cn_lines = credit_note.invoice_line_ids.filtered(lambda l: l.display_type == 'product')
         if cn_lines:
             line = cn_lines[0]
             tax = self.env['account.tax'].search([
