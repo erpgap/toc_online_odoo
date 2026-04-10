@@ -51,9 +51,10 @@ class CreditNoteSync(models.AbstractModel):
 
         self = self.with_company(company).sudo()
 
-        valid_taxes = invoice.invoice_line_ids[0].tax_ids.filtered(
+        invoice_product_lines = invoice.invoice_line_ids.filtered(lambda l: not l.display_type)
+        valid_taxes = invoice_product_lines[0].tax_ids.filtered(
             lambda t: not (t.amount == 0 and t.company_id != company)
-        )
+        ) if invoice_product_lines else self.env['account.tax']
 
         reverse_moves = invoice._reverse_moves(default_values_list=[{
             'ref': f"Credit Note imported from TOConline ({document_no})",
@@ -67,7 +68,8 @@ class CreditNoteSync(models.AbstractModel):
 
         line_data = toc_document_data.get('lines', [{}])[0]
 
-        credit_note_line = credit_note.invoice_line_ids[0]
+        cn_product_lines = credit_note.invoice_line_ids.filtered(lambda l: not l.display_type)
+        credit_note_line = cn_product_lines[0] if cn_product_lines else credit_note.invoice_line_ids[0]
         credit_note_line.write({
             'name': toc_document_data.get('description') or credit_note_line.name,
             'price_unit': line_data.get('unit_price', credit_note_line.price_unit),
