@@ -65,13 +65,13 @@ class AccountMove(models.Model):
     def get_value_credit_note(self):
         return self.credit_note_total_value
 
-    @api.depends('toc_document_no', 'toc_document_no_credit_note', 'move_type')
+    @api.depends('toc_document_no', 'toc_document_no_credit_note', 'move_type', 'name')
     def _compute_toc_display_number(self):
         for move in self:
             if move.move_type in ('out_refund', 'in_refund'):
-                move.toc_display_number = move.toc_document_no_credit_note or '/'
+                move.toc_display_number = move.toc_document_no_credit_note or move.name or '/'
             else:
-                move.toc_display_number = move.toc_document_no or '/'
+                move.toc_display_number = move.toc_document_no or move.name or '/'
 
     @api.depends('amount_total_in_currency_signed', 'credit_note_total_value', 'move_type')
     def _compute_toc_total_display(self):
