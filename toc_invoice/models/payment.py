@@ -41,7 +41,7 @@ class AccountPayment(models.Model):
         if invoice.state != 'posted':
             for line in invoice.invoice_line_ids.filtered(lambda l: l.display_type == 'product' and not l.is_downpayment):
                 for tax in line.tax_ids:
-                    if tax.amount == 0 and not invoice.tax_exemption_reason:
+                    if tax.amount == 0 and not invoice.l10npt_vat_exempt_reason:
                         raise UserError(
                             _("Cannot validate invoice %s with VAT exemption without a reason.") % invoice.name
                         )

@@ -105,7 +105,12 @@ class CreditNoteWizard(models.TransientModel):
 
         if tax_percentage == 0 and not global_exemption_reason:
             if self.l10npt_vat_exempt_reason:
-                global_exemption_reason = self.l10npt_vat_exempt_reason.id
+                exemption_code = self.l10npt_vat_exempt_reason.code
+                global_exemption_reason = service.get_tax_exemption_reason_id(exemption_code)
+                if not global_exemption_reason:
+                    raise UserError(
+                        _("Exemption reason '%s' not found in TOConline.") % exemption_code
+                    )
             else:
                 raise UserError(_("The VAT rate is 0%, but no exemption reason was given."))
 

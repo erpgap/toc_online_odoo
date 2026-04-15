@@ -290,7 +290,12 @@ class AccountMove(models.Model):
 
             if tax_percentage == 0 and not global_exemption_reason:
                 if record.l10npt_vat_exempt_reason:
-                    global_exemption_reason = record.l10npt_vat_exempt_reason.id
+                    exemption_code = record.l10npt_vat_exempt_reason.code
+                    global_exemption_reason = service.get_tax_exemption_reason_id(exemption_code)
+                    if not global_exemption_reason:
+                        raise UserError(
+                            _("Exemption reason '%s' not found in TOConline.") % exemption_code
+                        )
                 else:
                     raise UserError(_("0% VAT but no exemption reason."))
 
@@ -532,7 +537,13 @@ class AccountMove(models.Model):
 
             exemption_reason = None
             if tax_percentage == 0:
-                exemption_reason = self.l10npt_vat_exempt_reason and self.l10npt_vat_exempt_reason.id
+                if self.l10npt_vat_exempt_reason:
+                    exemption_code = self.l10npt_vat_exempt_reason.code
+                    exemption_reason = service.get_tax_exemption_reason_id(exemption_code)
+                    if not exemption_reason:
+                        raise UserError(
+                            _("Exemption reason '%s' not found in TOConline.") % exemption_code
+                        )
                 if not exemption_reason:
                     raise UserError(_("VAT is 0% but no exemption reason provided."))
 
@@ -555,8 +566,13 @@ class AccountMove(models.Model):
             lambda l: l.display_type == 'product' and not l.is_downpayment and any(round(t.amount, 2) == 0 for t in l.tax_ids)
         )[:1]
 
-        if zero_tax_line:
-                global_exemption_reason = self.l10npt_vat_exempt_reason and self.l10npt_vat_exempt_reason.id
+        if zero_tax_line and self.l10npt_vat_exempt_reason:
+            exemption_code = self.l10npt_vat_exempt_reason.code
+            global_exemption_reason = service.get_tax_exemption_reason_id(exemption_code)
+            if not global_exemption_reason:
+                raise UserError(
+                    _("Exemption reason '%s' not found in TOConline.") % exemption_code
+                )
 
 
         payload = {
