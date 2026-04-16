@@ -1,3 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_credit_note_wizard,credit note wizard,model_credit_note_wizard,base.group_user,1,1,1,1
 access_cancel_invoice_wizard,cancel.invoice.wizard,model_cancel_invoice_wizard,,1,1,1,1
+access_l10n_pt_vat_exempt_reason_read,account.l10n_pt.vat.exempt.reason.read,model_account_l10n_pt_vat_exempt_reason,base.group_user,1,0,0,0

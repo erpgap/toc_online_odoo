@@ -93,7 +93,7 @@
             <xpath expr="//div[@name='journal_div']" position="after">
                 <field name="checkbox" class="my-green-checkbox" string="TOConline"
                         readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
-                <field name="l10npt_vat_exempt_reason" invisible="is_l10npt_vat_enabled"/>
+                <field name="l10npt_vat_exempt_reason" invisible="is_l10npt_vat_enabled" readonly="sale_order_count &gt; 0 or state == 'posted'"/>
             </xpath>
 
             <xpath expr="//field[@name='partner_id']" position="after">

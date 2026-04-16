@@ -6,7 +6,7 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <field name="payment_term_id" position="after">
-                <field name="l10npt_vat_exempt_reason"/>
+                <field name="l10npt_vat_exempt_reason" readonly="state in ('sale', 'done', 'cancel')"/>
             </field>
         </field>
     </record>
