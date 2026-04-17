@@ -547,7 +547,7 @@ class AccountMove(models.Model):
             lines.append({
                 "item_id": product_id,
                 "item_code": line.product_id.default_code,
-                "description": line.product_id.name,
+                "description": f"{line.name}" if line.name and line.name != line.product_id.name else line.product_id.name,
                 "quantity": line.quantity,
                 "unit_price": line.price_unit,
                 "tax_code": tax_info["code"],
@@ -888,7 +888,7 @@ class AccountMove(models.Model):
             lines.append({
                 "item_id": None,
                 "item_code": product.default_code,
-                "description": line.name,
+                "description": f"{line.name}" if line.name and line.name != line.product_id.name else line.product_id.name,
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "tax_code": tax_code,
