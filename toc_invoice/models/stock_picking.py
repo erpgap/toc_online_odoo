@@ -60,6 +60,79 @@ class StockPicking(models.Model):
         return res
 
 
+    @staticmethod
+    def _zip_pt(zip_code):
+        """Format a zip code to Portuguese format (XXXX-XXX)."""
+        if not zip_code:
+            return "0000-000"
+        digits = ''.join(filter(str.isdigit, zip_code))
+        if len(digits) >= 7:
+            return f"{digits[:4]}-{digits[4:7]}"
+        return "0000-000"
+
+    def _prepare_gr_payload(self, service, lines):
+        """Prepare the GR payload for TOConline. Override to customise addresses."""
+        self.ensure_one()
+        partner = self.partner_id
+
+        doc_date = (
+            self.scheduled_date.date()
+            if self.scheduled_date
+            else fields.Date.today()
+        )
+
+        warehouse = self.picking_type_id.warehouse_id
+        from_partner = warehouse.partner_id or self.company_id.partner_id
+
+        current_datetime = fields.Datetime.now()
+        loading_time = (
+            self.scheduled_date
+            if self.scheduled_date and self.scheduled_date >= current_datetime
+            else current_datetime
+        )
+
+        tax_exemption_reason = None
+        if self.l10npt_vat_exempt_reason:
+            exemption_code = self.l10npt_vat_exempt_reason.code
+            exemption_id = service.get_tax_exemption_reason_id(exemption_code)
+            if not exemption_id:
+                raise UserError(
+                    _("Motivo de isenção '%s' não encontrado no TOConline.")
+                    % exemption_code
+                )
+            tax_exemption_reason = exemption_id
+
+        return {
+            "document_type": "GR",
+            "date": doc_date.strftime("%Y-%m-%d"),
+            "external_reference": self.name,
+
+            "customer_business_name": partner.name,
+            "customer_tax_registration_number": partner.vat or "999999990",
+            "customer_address_detail": partner.street or "",
+            "customer_postcode": partner.zip or "0000-000",
+            "customer_city": partner.city or "",
+            "customer_country": partner.country_id.code or "PT",
+
+            "shipment_from_address_detail": from_partner.street or "",
+            "shipment_from_postcode": self._zip_pt(from_partner.zip),
+            "shipment_from_city": from_partner.city or "",
+            "shipment_from_country": from_partner.country_id.code if from_partner.country_id else "PT",
+
+            "operation_country": "PT",
+
+            # DESCARGA (OBRIGATÓRIO GR)
+            "shipment_address_detail": partner.street or "",
+            "shipment_city": partner.city or "",
+            "shipment_postcode": self._zip_pt(partner.zip),
+            "shipment_country": partner.country_id.code or "PT",
+            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(
+                pytz.timezone('Europe/Lisbon')
+            ).strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "tax_exemption_reason_id": tax_exemption_reason,
+            "lines": lines,
+        }
+
     def _send_delivery_to_toconline(self):
         self.ensure_one()
 
@@ -150,68 +223,7 @@ class StockPicking(models.Model):
         if not lines:
             return
 
-        partner = self.partner_id
-
-        doc_date = (
-            self.scheduled_date.date()
-            if self.scheduled_date
-            else fields.Date.today()
-        )
-
-        warehouse = self.picking_type_id.warehouse_id
-        from_partner = warehouse.partner_id or self.company_id.partner_id
-        to_partner = self.company_id.partner_id
-
-        current_datetime = fields.Datetime.now()
-        loading_time = self.scheduled_date if self.scheduled_date and self.scheduled_date >= current_datetime else current_datetime
-
-        def zip_pt(zip_code):
-            if not zip_code:
-                return "0000-000"
-            digits = ''.join(filter(str.isdigit, zip_code))
-            if len(digits) >= 7:
-                return f"{digits[:4]}-{digits[4:7]}"
-            return "0000-000"
-
-        if self.l10npt_vat_exempt_reason:
-            exemption_code = self.l10npt_vat_exempt_reason.code
-            exemption_id = service.get_tax_exemption_reason_id(exemption_code)
-            if not exemption_id:
-                raise UserError(
-                    _("Motivo de isenção '%s' não encontrado no TOConline.")
-                    % exemption_code
-                )
-            tax_exemption_reason = exemption_id
-
-        payload = {
-            "document_type": "GR",
-            "date": doc_date.strftime("%Y-%m-%d"),
-            "external_reference": self.name,
-
-            "customer_business_name": partner.name,
-            "customer_tax_registration_number": partner.vat or "999999990",
-            "customer_address_detail": partner.street or "",
-            "customer_postcode": partner.zip or "0000-000",
-            "customer_city": partner.city or "",
-            "customer_country": partner.country_id.code or "PT",
-
-            "shipment_from_address_detail": to_partner.street or "",
-            "shipment_from_postcode": zip_pt(to_partner.zip),
-            "shipment_from_city": to_partner.city or "",
-            "shipment_from_country": to_partner.country_id.code if to_partner.country_id else "PT",
-
-
-            "operation_country": "PT",
-
-            # DESCARGA (OBRIGATÓRIO GR)
-            "shipment_address_detail": partner.street or "",
-            "shipment_city": partner.city or "",
-            "shipment_postcode": zip_pt(partner.zip),
-            "shipment_country": partner.country_id.code or "PT",
-            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(pytz.timezone('Europe/Lisbon')).strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "tax_exemption_reason_id": tax_exemption_reason,
-            "lines": lines,
-        }
+        payload = self._prepare_gr_payload(service, lines)
 
         response = service.send_document(payload)
 
