@@ -56,6 +56,8 @@ class AccountMove(models.Model):
     cancellation_reason = fields.Char(string="reason for invoice cancellation")
     cancellation_date = fields.Date(string="Date of cancellation")
 
+    toc_online_enabled = fields.Boolean(related='company_id.toc_online_enabled')
+
 
     def set_value_credit_note(self, aux):
         for record in self:
@@ -489,6 +491,17 @@ class AccountMove(models.Model):
             'view_mode': 'form',
             'target': 'new',
             'context': {'default_cancel_reason': '', 'active_id': self.id},
+        }
+
+    def open_toc_link_invoice_wizard(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _("Link TOConline Invoice"),
+            'res_model': 'toc.link.invoice.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_invoice_id': self.id},
         }
 
     ### Credit Note ###

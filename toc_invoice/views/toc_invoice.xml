@@ -52,6 +52,18 @@
                         class="btn btn-outline-danger"
                         style="font-weight: bold; background-color: #f8d7da; border-color: #f5c2c7; color: #842029;"
                         invisible="1"/>
+                <button
+                        name="open_toc_link_invoice_wizard"
+                        type="object"
+                        string="Link TOConline Invoice"
+                        class="btn btn-primary"
+                        invisible="not toc_online_enabled or state != 'posted' or move_type != 'out_invoice' or toc_status != 'draft'"/>
+                <button
+                        name="open_toc_link_invoice_wizard"
+                        type="object"
+                        string="Link TOConline Credit Note"
+                        class="btn btn-primary"
+                        invisible="not toc_online_enabled or state != 'posted' or move_type != 'out_refund' or toc_status_credit_note != 'draft'"/>
             </xpath>
 
             <xpath expr="//button[@name='button_cancel']" position="replace">

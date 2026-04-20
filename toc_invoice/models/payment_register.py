@@ -11,7 +11,7 @@ class AccountPaymentRegister(models.TransientModel):
 
     def action_create_payments(self):
         res = super().action_create_payments()
-        for wizard in self:
+        for wizard in self.filtered(lambda w: w.company_id.toc_online_enabled):
             service = TocOnlineService(wizard.company_id, self.env)
 
             if not wizard.partner_id:

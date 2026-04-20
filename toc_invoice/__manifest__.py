@@ -19,6 +19,7 @@
         'views/stock_picking_view.xml',
         'views/repair_form.xml',
         'wizard/toc_cancel_invoice.xml',
+        'wizard/toc_link_invoice.xml',
     ],
     'assets':{
         'web.assets_backend':[
