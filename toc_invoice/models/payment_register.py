@@ -12,7 +12,12 @@ class AccountPaymentRegister(models.TransientModel):
     def action_create_payments(self):
         res = super().action_create_payments()
         for wizard in self.filtered(lambda w: w.company_id.toc_online_enabled):
-            service = TocOnlineService(wizard.company_id, self.env)
+            invoice_id = self.env.context.get('active_id')
+            invoice = self.env['account.move'].browse(invoice_id)
+            document_no = invoice.get_ID_invoice() if invoice else False
+
+            if not document_no:
+                continue
 
             if not wizard.partner_id:
                 raise UserError(_("Payment must have an associated partner"))
@@ -20,16 +25,14 @@ class AccountPaymentRegister(models.TransientModel):
             if not wizard.amount:
                 raise UserError(_("Payment amount cannot be 0"))
 
+            service = TocOnlineService(wizard.company_id, self.env)
+
             partner = wizard.partner_id
             currency = wizard.currency_id
             date = wizard.payment_date or fields.Date.today()
 
             journal_type = wizard.journal_id.type
             payment_mechanism = 'MO' if journal_type == 'cash' else 'TR' if journal_type == 'bank' else ''
-
-            invoice_id = self.env.context.get('active_id')
-            invoice = self.env['account.move'].browse(invoice_id)
-            document_no = invoice.get_ID_invoice()
 
             doc_id = service.get_document_field_by_number(document_no, "id")
             user_id = service.get_document_field_by_number(document_no, "user_id")

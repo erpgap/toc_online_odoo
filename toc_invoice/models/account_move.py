@@ -108,7 +108,7 @@ class AccountMove(models.Model):
     def _check_invoice_dates(self):
         today = date.today()
         for record in self:
-            if not (record.company_id.toc_online_enabled and record.journal_id.send_to_toconline):
+            if not (record.company_id.toc_online_enabled and record.journal_id.send_to_toconline) or record.state != 'draft':
                 continue
             if record.toc_status not in ('sent', 'cancelled'):
                 if record.invoice_date and record.invoice_date < today:
