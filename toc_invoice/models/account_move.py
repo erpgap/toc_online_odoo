@@ -116,12 +116,6 @@ class AccountMove(models.Model):
                 if record.invoice_date_due and record.invoice_date_due < today:
                     raise ValidationError(_("The due date must be today or a future date."))
 
-    @api.constrains('state')
-    def _check_state_invoice(self):
-        for record in self:
-            if record.toc_status == 'cancelled' and record.state == 'draft':
-                raise ValidationError("The invoice has already been cancelled in TOConline and cannot be modified.")
-
     def get_toc_status_credit_note(self):
         return  self.toc_status_credit_note
 
