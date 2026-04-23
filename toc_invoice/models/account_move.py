@@ -116,6 +116,21 @@ class AccountMove(models.Model):
                 if record.invoice_date_due and record.invoice_date_due < today:
                     raise ValidationError(_("The due date must be today or a future date."))
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('move_type') != 'out_refund' or vals.get('reversed_entry_id'):
+                continue
+            company = self.env['res.company'].browse(
+                vals.get('company_id') or self.env.company.id
+            )
+            if company.toc_online_enabled:
+                raise UserError(_(
+                    "Credit notes must be created from an existing invoice when TOConline is "
+                    "enabled. Please open the original invoice and use the 'Credit Note' action."
+                ))
+        return super().create(vals_list)
+
     def get_toc_status_credit_note(self):
         return  self.toc_status_credit_note
 
