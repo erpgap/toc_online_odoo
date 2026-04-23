@@ -407,20 +407,6 @@ class AccountMove(models.Model):
 
     def action_cancel_invoice_toconline(self):
         for record in self:
-
-            newer_invoice = self.env['account.move'].search([
-                ('move_type', '=', record.move_type),
-                ('journal_id', '=', record.journal_id.id),
-                ('company_id', '=', record.company_id.id),
-                ('state', 'in', ['posted', 'cancel']),
-                ('invoice_date', '>', record.invoice_date),
-            ], order='invoice_date asc', limit=1)
-
-            if newer_invoice:
-                raise UserError(_(
-                    "You cannot cancel this invoice (%s) because a more recent invoice (%s) already exists and has been posted or cancelled."
-                ) % (record.display_name, newer_invoice.display_name))
-
             if record.journal_id.send_to_toconline:
                 if not record.toc_document_id:
                     raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
