@@ -407,62 +407,78 @@ class AccountMove(models.Model):
 
     def action_cancel_invoice_toconline(self):
         for record in self:
-            if record.journal_id.send_to_toconline:
-                if not record.toc_document_id:
-                    raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
+            if not record.journal_id.send_to_toconline:
+                record.button_cancel()
+                continue
 
-                if record.toc_status != 'sent':
-                    raise UserError(_("Only invoices already sent to TOConline can be canceled."))
+            if not record.toc_document_id:
+                raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
 
-                reason = self.env.context.get('cancel_reason')
-                if not reason:
-                    raise UserError(_("You must provide a reason to cancel the invoice."))
+            service = TocOnlineService(record.company_id, self.env)
 
-                service = TocOnlineService(record.company_id, self.env)
+            toc_doc = service.get_document_by_id(record.toc_document_id)
+            toc_current_status = (toc_doc or {}).get('status')
 
-                response = service.cancel_document(record.toc_document_id, reason)
-
-                if response.status_code != 200:
-                    raise UserError(
-                        _("Failed to cancel invoice on TOConline. Status: %s, Response: %s")
-                        % (response.status_code, response.text)
-                    )
-                response_data = response.json()
-
-                attributes = response_data.get('data', {}).get('attributes', {})
-                cancel_reason = attributes.get('voided_reason', '')
-                cancel_date = attributes.get('created_at', '')
-
+            if toc_doc and toc_current_status == 4:
+                voided_reason = toc_doc.get('voided_reason', '')
+                cancel_date = toc_doc.get('created_at', '')
                 record.write({
                     'toc_status': 'cancelled',
-                    'cancellation_reason': cancel_reason,
-                    'cancellation_date': cancel_date,
+                    'cancellation_reason': voided_reason or record.cancellation_reason,
+                    'cancellation_date': cancel_date or fields.Date.context_today(record),
                 })
+                msg = _("Invoice was already cancelled on TOConline. Synced cancellation details from TOConline.")
+                if voided_reason:
+                    msg += _("<br/>Reason: %s") % voided_reason
+                record.message_post(body=Markup(msg))
                 record.button_cancel()
-                try:
-                    public_link = attributes.get("public_link")
-                    if public_link:
-                        msg = _(
-                            "Invoice cancelled on TOConline:<ul>"
-                            "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
-                            "</ul>"
-                        ).format(link=public_link)
-                        record.message_post(body=Markup(msg))
+                continue
 
-                    toc_document_id = str(record.toc_document_id)
-                    if toc_document_id:
-                        service.download_and_attach_pdf(
-                            record, toc_document_id, f"Fatura_{record.name}.pdf",
-                            message=_("PDF successfully downloaded and attached to the invoice."),
-                        )
+            reason = self.env.context.get('cancel_reason')
+            if not reason:
+                raise UserError(_("You must provide a reason to cancel the invoice."))
 
-                except Exception as e:
-                        raise UserError(_(
-                            "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
-                            "Technical error: %s"
-                        ) % str(e))
-            else:
-                record.button_cancel()
+            response = service.cancel_document(record.toc_document_id, reason)
+
+            if response.status_code != 200:
+                raise UserError(
+                    _("Failed to cancel invoice on TOConline. Status: %s, Response: %s")
+                    % (response.status_code, response.text)
+                )
+            response_data = response.json()
+
+            attributes = response_data.get('data', {}).get('attributes', {})
+            cancel_reason = attributes.get('voided_reason', '')
+            cancel_date = attributes.get('created_at', '')
+
+            record.write({
+                'toc_status': 'cancelled',
+                'cancellation_reason': cancel_reason,
+                'cancellation_date': cancel_date,
+            })
+            record.button_cancel()
+            try:
+                public_link = attributes.get("public_link")
+                if public_link:
+                    msg = _(
+                        "Invoice cancelled on TOConline:<ul>"
+                        "<li>Public link: <a href='{link}' target='_blank'>{link}</a></li>"
+                        "</ul>"
+                    ).format(link=public_link)
+                    record.message_post(body=Markup(msg))
+
+                toc_document_id = str(record.toc_document_id)
+                if toc_document_id:
+                    service.download_and_attach_pdf(
+                        record, toc_document_id, f"Fatura_{record.name}.pdf",
+                        message=_("PDF successfully downloaded and attached to the invoice."),
+                    )
+
+            except Exception as e:
+                    raise UserError(_(
+                        "The invoice was cancelled on TOConline, but the system was unable to post the confirmation message in the chatter. "
+                        "Technical error: %s"
+                    ) % str(e))
 
     def open_credit_note_wizard(self):
         self.ensure_one()
@@ -480,6 +496,15 @@ class AccountMove(models.Model):
         }
 
     def open_cancel_invoice_wizard(self):
+        self.ensure_one()
+        if self.journal_id.send_to_toconline and self.toc_document_id:
+            service = TocOnlineService(self.company_id, self.env)
+            toc_doc = service.get_document_by_id(self.toc_document_id)
+            toc_attributes = (toc_doc or {}).get('data', {}).get('attributes', {})
+            if toc_attributes.get('status') == 4:
+                self.action_cancel_invoice_toconline()
+                return {'type': 'ir.actions.act_window_close'}
+
         return {
             'type': 'ir.actions.act_window',
             'res_model': 'cancel.invoice.wizard',
