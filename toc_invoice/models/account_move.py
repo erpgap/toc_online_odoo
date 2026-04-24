@@ -666,20 +666,6 @@ class AccountMove(models.Model):
                         message=_("PDF successfully downloaded and attached to the invoice."),
                     )
 
-    def write(self, vals):
-        restricted_fields = {
-            'invoice_line_ids', 'partner_id', 'invoice_date', 'invoice_date_due',
-            'currency_id', 'journal_id', 'amount_total', 'amount_untaxed', 'amount_tax'
-        }
-
-        for move in self:
-            if move.toc_status == 'sent' and move.state != 'cancel':
-                if any(field in vals for field in restricted_fields):
-                    raise UserError(
-                        _("This invoice has already been sent to TOConline and can no longer be edited. Please cancel it or create a credit note."))
-
-        return super().write(vals)
-
     def action_send_invoice_with_attachment(self):
         self.ensure_one()
 
