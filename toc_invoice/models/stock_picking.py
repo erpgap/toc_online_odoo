@@ -153,12 +153,6 @@ class StockPicking(models.Model):
             product = move.product_id
             product_id = service.get_or_create_product(product)
 
-            unit_price = (
-                move.sale_line_id.price_unit
-                if move.sale_line_id
-                else product.list_price
-            )
-
             sale_line = move.sale_line_id
 
             tax = (
@@ -210,7 +204,7 @@ class StockPicking(models.Model):
                 "description": product.display_name[:100],
                 "quantity": done_qty,
                 "unit_of_measure": "un",
-                "unit_price": unit_price,
+                "unit_price": 0.0,
                 "tax_code": tax_code,
                 "tax_percentage": tax_percentage,
                 "tax_country_region": tax_region,
