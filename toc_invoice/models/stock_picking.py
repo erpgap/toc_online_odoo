@@ -8,25 +8,27 @@ from .toc_online_service import TocOnlineService
 
 _logger = logging.getLogger(__name__)
 
+TOC_RETURN_DOC_TYPE = "GD"
+
 
 class StockPicking(models.Model):
     _inherit = "stock.picking"
 
     l10npt_vat_exempt_reason = fields.Many2one(
         "account.l10n_pt.vat.exempt.reason",
-        string="VAT Exempt Reason",
+        string="VAT Exempt Reason", copy=False
     )
 
     toc_status = fields.Selection([
         ("draft", "Draft"),
         ("sent", "Sent"),
         ("error", "Error"),
-    ], default="draft", string="TOConline Status")
+    ], default="draft", string="TOConline Status", copy=False)
 
-    toc_document_no = fields.Char("TOConline Document No")
-    toc_document_id = fields.Char("TOConline Document ID")
-    toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False)
-    toc_communication_code = fields.Char("AT Communication Code")
+    toc_document_no = fields.Char("TOConline Document No", copy=False)
+    toc_document_id = fields.Char("TOConline Document ID", copy=False)
+    toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
+    toc_communication_code = fields.Char("AT Communication Code", copy=False)
 
 
     # =====================================================
@@ -54,10 +56,33 @@ class StockPicking(models.Model):
                     )
         res = super().button_validate()
         for picking in self:
-            company = picking.company_id
-            if picking.picking_type_code == "outgoing" and picking.state == "done" and company.toc_online_enabled:
-                picking._send_delivery_to_toconline()
+            if not picking.company_id.toc_online_enabled or picking.state != "done":
+                continue
+            if picking.picking_type_code == "outgoing":
+                picking._send_transport_doc_to_toconline(document_type="GR")
+            elif picking._is_delivery_return():
+                picking._send_transport_doc_to_toconline(
+                    document_type=TOC_RETURN_DOC_TYPE,
+                )
         return res
+
+    def _is_delivery_return(self):
+        self.ensure_one()
+        return bool(
+            self.return_id
+            and self.return_id.picking_type_code == "outgoing"
+            and self.picking_type_code == "incoming"
+        )
+
+    def _get_toc_shipment_partners(self):
+        self.ensure_one()
+        warehouse_partner = (
+            self.picking_type_id.warehouse_id.partner_id
+            or self.company_id.partner_id
+        )
+        if self.picking_type_code == "incoming":
+            return self.partner_id, warehouse_partner
+        return warehouse_partner, self.partner_id
 
 
     @staticmethod
@@ -70,19 +95,17 @@ class StockPicking(models.Model):
             return f"{digits[:4]}-{digits[4:7]}"
         return "0000-000"
 
-    def _prepare_gr_payload(self, service, lines):
-        """Prepare the GR payload for TOConline. Override to customise addresses."""
+    def _prepare_gr_payload(self, service, lines, document_type="GR", parent_document_reference=None):
+        """Prepare the transport document payload for TOConline."""
         self.ensure_one()
         partner = self.partner_id
+        from_partner, to_partner = self._get_toc_shipment_partners()
 
         doc_date = (
             self.scheduled_date.date()
             if self.scheduled_date
             else fields.Date.today()
         )
-
-        warehouse = self.picking_type_id.warehouse_id
-        from_partner = warehouse.partner_id or self.company_id.partner_id
 
         current_datetime = fields.Datetime.now()
         loading_time = (
@@ -103,7 +126,8 @@ class StockPicking(models.Model):
             tax_exemption_reason = exemption_id
 
         return {
-            "document_type": "GR",
+            "document_type": document_type,
+            "parent_document_reference": parent_document_reference,
             "date": doc_date.strftime("%Y-%m-%d"),
             "external_reference": self.name,
 
@@ -121,11 +145,10 @@ class StockPicking(models.Model):
 
             "operation_country": "PT",
 
-            # DESCARGA (OBRIGATÓRIO GR)
-            "shipment_address_detail": partner.street or "",
-            "shipment_city": partner.city or "",
-            "shipment_postcode": self._zip_pt(partner.zip),
-            "shipment_country": partner.country_id.code or "PT",
+            "shipment_address_detail": to_partner.street or "",
+            "shipment_city": to_partner.city or "",
+            "shipment_postcode": self._zip_pt(to_partner.zip),
+            "shipment_country": to_partner.country_id.code if to_partner.country_id else "PT",
             "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(
                 pytz.timezone('Europe/Lisbon')
             ).strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -133,14 +156,23 @@ class StockPicking(models.Model):
             "lines": lines,
         }
 
-    def _send_delivery_to_toconline(self):
+    def _send_transport_doc_to_toconline(self, document_type="GR"):
         self.ensure_one()
 
         if self.toc_status == "sent":
             return
 
         if not self.partner_id:
-            raise UserError(_("Delivery has no customer."))
+            raise UserError(_("Picking has no partner."))
+
+        parent_document_reference = None
+        if document_type == "GD":
+            if not self.return_id or not self.return_id.toc_document_no:
+                raise UserError(_(
+                    "The original delivery must have been sent to TOConline "
+                    "before its return can be registered."
+                ))
+            parent_document_reference = self.return_id.toc_document_no
 
         service = TocOnlineService(self.company_id, self.env)
 
@@ -217,7 +249,12 @@ class StockPicking(models.Model):
         if not lines:
             return
 
-        payload = self._prepare_gr_payload(service, lines)
+        payload = self._prepare_gr_payload(
+            service,
+            lines,
+            document_type=document_type,
+            parent_document_reference=parent_document_reference,
+        )
 
         response = service.send_document(payload)
 
@@ -233,9 +270,8 @@ class StockPicking(models.Model):
             "toc_document_id": data.get("id"),
         })
 
-
         if self.toc_document_id:
-            self._download_and_attach_toc_pdf(service)
+            self._download_and_attach_toc_pdf(service, document_type=document_type)
 
 
     def _communicate_to_at(self, service, toc_doc_id):
@@ -245,16 +281,20 @@ class StockPicking(models.Model):
             self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
 
 
-    def _download_and_attach_toc_pdf(self, service):
+    def _download_and_attach_toc_pdf(self, service, document_type="GR"):
         self.ensure_one()
 
         if self.toc_pdf_attached:
             return
 
+        safe_name = self.name.replace("/", "_") if self.name else "picking"
+        guia_subtype = {"GR": "Remessa", "GD": "Devolucao"}.get(document_type, document_type)
+        filename = f"Guia_{guia_subtype}_{safe_name}.pdf"
+
         service.download_and_attach_pdf(
-            self, self.toc_document_id, f"Guia_{self.name}.pdf",
-            message=_("GR PDF downloaded and attached."),
+            self, self.toc_document_id, filename,
+            message=_("%s PDF downloaded and attached.") % document_type,
         )
         self.write({"toc_pdf_attached": True})
 
-        _logger.info("GR PDF attached to picking %s", self.name)
+        _logger.info("%s PDF attached to picking %s", document_type, self.name)
