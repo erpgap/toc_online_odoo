@@ -1,7 +1,7 @@
 import logging
 import pytz
 
-from odoo import models, fields, api, _
+from odoo import models, fields, _
 from odoo.exceptions import UserError
 
 from .toc_online_service import TocOnlineService
@@ -13,11 +13,6 @@ TOC_RETURN_DOC_TYPE = "GD"
 
 class StockPicking(models.Model):
     _inherit = "stock.picking"
-
-    l10npt_vat_exempt_reason = fields.Many2one(
-        "account.l10n_pt.vat.exempt.reason",
-        string="VAT Exempt Reason", copy=False
-    )
 
     toc_status = fields.Selection([
         ("draft", "Draft"),
@@ -97,8 +92,9 @@ class StockPicking(models.Model):
         )
 
         tax_exemption_reason = None
-        if self.l10npt_vat_exempt_reason:
-            exemption_code = self.l10npt_vat_exempt_reason.code
+        sale_exempt_reason = self.sale_id.l10npt_vat_exempt_reason if self.sale_id else False
+        if sale_exempt_reason:
+            exemption_code = sale_exempt_reason.code
             exemption_id = service.get_tax_exemption_reason_id(exemption_code)
             if not exemption_id:
                 raise UserError(
@@ -134,7 +130,6 @@ class StockPicking(models.Model):
             "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(
                 pytz.timezone('Europe/Lisbon')
             ).strftime("%Y-%m-%dT%H:%M:%S%z"),
-            # "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
 
