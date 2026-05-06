@@ -2,7 +2,7 @@ import logging
 import pytz
 
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 
 from .toc_online_service import TocOnlineService
 
@@ -36,24 +36,6 @@ class StockPicking(models.Model):
     # =====================================================
 
     def button_validate(self):
-        for picking in self:
-            if (
-                picking.picking_type_code == "outgoing"
-                and picking.company_id.toc_online_enabled
-                and not picking.l10npt_vat_exempt_reason
-            ):
-                has_exempt_lines = False
-                for move in picking.move_ids:
-                    taxes = False
-                    if move.sale_line_id:
-                        taxes = move.sale_line_id.tax_ids.filtered(lambda t: t.type_tax_use == "sale")
-                    if not taxes or any(round(t.amount, 2) == 0.0 for t in taxes):
-                        has_exempt_lines = True
-                        break
-                if has_exempt_lines:
-                    raise ValidationError(
-                        _("A tax exemption reason must be provided.")
-                    )
         res = super().button_validate()
         for picking in self:
             if not picking.company_id.toc_online_enabled or picking.state != "done":
@@ -152,7 +134,7 @@ class StockPicking(models.Model):
             "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(
                 pytz.timezone('Europe/Lisbon')
             ).strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "tax_exemption_reason_id": tax_exemption_reason,
+            # "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
 
@@ -185,50 +167,6 @@ class StockPicking(models.Model):
             product = move.product_id
             product_id = service.get_or_create_product(product)
 
-            sale_line = move.sale_line_id
-
-            tax = (
-                sale_line.tax_ids.filtered(lambda t: t.type_tax_use == "sale")[:1]
-                if sale_line
-                else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
-            )
-
-            tax_code = "ISE"
-            tax_percentage = 0.0
-            tax_region = "PT"
-            tax_exemption_reason = None
-
-
-            if tax:
-                tax_percentage = round(tax.amount or 0.0, 2)
-
-                if tax_percentage == 23:
-                    tax_code = "NOR"
-                elif tax_percentage == 13:
-                    tax_code = "INT"
-                elif tax_percentage == 6:
-                    tax_code = "RED"
-                elif tax_percentage == 0:
-                    tax_code = "ISE"
-
-                    if self.l10npt_vat_exempt_reason:
-                        tax_exemption_reason = self.l10npt_vat_exempt_reason.code
-                    else:
-                        raise UserError(
-                            _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                            % product.display_name
-                        )
-                else:
-                    tax_code = "NOR"
-
-                _logger.info(
-                    "IVA aplicado: %s | %s%% | Código: %s",
-                    tax.name,
-                    tax_percentage,
-                    tax_code,
-                )
-
-
             line_dict = {
                 "item_type": "Product",
                 "item_id": product_id,
@@ -237,12 +175,7 @@ class StockPicking(models.Model):
                 "quantity": done_qty,
                 "unit_of_measure": "un",
                 "unit_price": 0.0,
-                "tax_code": tax_code,
-                "tax_percentage": tax_percentage,
-                "tax_country_region": tax_region,
             }
-
-
 
             lines.append(line_dict)
 
