@@ -1,7 +1,7 @@
 import logging
 import pytz
 
-from odoo import models, fields, _
+from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 from .toc_online_service import TocOnlineService
@@ -14,6 +14,11 @@ TOC_RETURN_DOC_TYPE = "GD"
 class StockPicking(models.Model):
     _inherit = "stock.picking"
 
+
+    l10npt_vat_exempt_reason = fields.Many2one(
+        "account.l10n_pt.vat.exempt.reason",
+        string="VAT Exempt Reason", copy=False
+    )
     toc_status = fields.Selection([
         ("draft", "Draft"),
         ("sent", "Sent"),
