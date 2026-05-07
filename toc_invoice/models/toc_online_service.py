@@ -498,8 +498,12 @@ class TocOnlineService:
             _logger.error("Connection error for TOC document ID %s: %s", document_id, str(e))
             return None
 
-    def get_last_document_date(self):
+    def get_last_document_date(self, document_type=None):
+        """Return the date of the most recent document in TOConline.
+        """
         url = "/api/v1/commercial_sales_documents?sort=-date&page[size]=1"
+        if document_type:
+            url += f"&filter[document_type]={document_type}"
         try:
             response = self._send_request('GET', url)
             if response.status_code == 200:
@@ -507,7 +511,10 @@ class TocOnlineService:
                 items = res_data if isinstance(res_data, list) else res_data.get('data', [])
                 if items:
                     last_date_str = items[0].get('date')
-                    _logger.info("Last date found in TOConline: %s", last_date_str)
+                    _logger.info(
+                        "Last date in TOConline (document_type=%s): %s",
+                        document_type or "ANY", last_date_str,
+                    )
                     return fields.Date.from_string(last_date_str)
         except Exception as e:
             _logger.error("Failed to validate TOConline chronology: %s", str(e))

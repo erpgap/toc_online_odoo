@@ -77,17 +77,40 @@ class StockPicking(models.Model):
             return f"{digits[:4]}-{digits[4:7]}"
         return "0000-000"
 
+    def _get_toc_document_date(self, service, document_type):
+        """Return a document date that respects TOConline chronology.
+        """
+        self.ensure_one()
+        base_date = (
+            self.scheduled_date.date()
+            if self.scheduled_date
+            else fields.Date.today()
+        )
+        doc_date = max(base_date, fields.Date.today())
+
+        last_toc_date = service.get_last_document_date(document_type=document_type)
+        if last_toc_date and last_toc_date > doc_date:
+            doc_date = last_toc_date
+
+        if doc_date > base_date:
+            _logger.warning(
+                "Picking %s: adjusting TOC document date from %s to %s for chronology.",
+                self.name, base_date, doc_date,
+            )
+            self.message_post(
+                body=_(
+                    "Document date adjusted to %s to satisfy TOConline chronology."
+                ) % doc_date,
+            )
+        return doc_date
+
     def _prepare_gr_payload(self, service, lines, document_type="GR", parent_document_reference=None):
         """Prepare the transport document payload for TOConline."""
         self.ensure_one()
         partner = self.partner_id
         from_partner, to_partner = self._get_toc_shipment_partners()
 
-        doc_date = (
-            self.scheduled_date.date()
-            if self.scheduled_date
-            else fields.Date.today()
-        )
+        doc_date = self._get_toc_document_date(service, document_type)
 
         current_datetime = fields.Datetime.now()
         loading_time = (

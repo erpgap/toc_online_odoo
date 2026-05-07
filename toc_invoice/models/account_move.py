@@ -326,12 +326,19 @@ class AccountMove(models.Model):
 
         return lines, global_exemption_reason
 
+    def _get_toc_document_type(self):
+        """Map Odoo move_type to TOConline document_type code."""
+        self.ensure_one()
+        return "NC" if self.move_type == "out_refund" else "FT"
+
     def _get_last_toc_document_date(self, service):
-        return service.get_last_document_date()
+        return service.get_last_document_date(document_type=self._get_toc_document_type())
 
     def _adjust_date_for_chronology(self, service):
         self.ensure_one()
-        last_toc_date = service.get_last_document_date()
+        last_toc_date = service.get_last_document_date(
+            document_type=self._get_toc_document_type(),
+        )
 
         if last_toc_date and self.invoice_date and self.invoice_date < last_toc_date:
             _logger.warning("Ajustando data da fatura %s por integridade cronológica.", self.name)
