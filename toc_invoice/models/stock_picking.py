@@ -93,13 +93,15 @@ class StockPicking(models.Model):
             doc_date = last_toc_date
 
         if doc_date > base_date:
+            self.sudo().write({"scheduled_date": doc_date})
+
             _logger.warning(
                 "Picking %s: adjusting TOC document date from %s to %s for chronology.",
                 self.name, base_date, doc_date,
             )
             self.message_post(
                 body=_(
-                    "Document date adjusted to %s to satisfy TOConline chronology."
+                    "Scheduled date adjusted to %s to satisfy TOConline chronology."
                 ) % doc_date,
             )
         return doc_date
