@@ -33,33 +33,107 @@ class StockPicking(models.Model):
     # =====================================================
 
     def button_validate(self):
-        for picking in self:
-            # ADDED: 'internal' to the allowed picking types
-            if (
-                    picking.picking_type_code == "outgoing"
-                    and picking.company_id.toc_online_enabled
-                    and not picking.l10npt_vat_exempt_reason
-            ):
-                has_exempt_lines = False
-                for move in picking.move_ids:
-                    taxes = False
-                    if move.sale_line_id:
-                        taxes = move.sale_line_id.tax_ids.filtered(lambda t: t.type_tax_use == "sale")
-                    if not taxes or any(round(t.amount, 2) == 0.0 for t in taxes):
-                        has_exempt_lines = True
-                        break
-                if has_exempt_lines:
-                    raise ValidationError(
-                        _("A tax exemption reason must be provided.")
-                    )
         res = super().button_validate()
         for picking in self:
+            if not picking.company_id.toc_online_enabled or picking.state != "done":
+                continue
+            if picking.picking_type_code == "outgoing":
+                picking._send_transport_doc_to_toconline(document_type="GR")
+            elif picking._is_delivery_return():
+                picking._send_transport_doc_to_toconline(
+                    document_type=TOC_RETURN_DOC_TYPE,
+                )
             company = picking.company_id
             # ADDED: 'internal' to the types that trigger the dispatch
-            if picking.picking_type_code in ("outgoing",
-                                             "internal") and picking.state == "done" and company.toc_online_enabled:
+            if picking.picking_type_code == "internal" and picking.state == "done" and company.toc_online_enabled:
                 picking._send_delivery_to_toconline()
         return res
+
+    def _send_transport_doc_to_toconline(self, document_type="GR"):
+        self.ensure_one()
+
+        if self.toc_status == "sent":
+            return
+
+        if not self.partner_id:
+            raise UserError(_("Picking has no partner."))
+
+        parent_document_reference = None
+        if document_type == "GD":
+            if not self.return_id or not self.return_id.toc_document_no:
+                raise UserError(_(
+                    "The original delivery must have been sent to TOConline "
+                    "before its return can be registered."
+                ))
+            parent_document_reference = self.return_id.toc_document_no
+
+        service = TocOnlineService(self.company_id, self.env)
+
+        lines = []
+        for move in self.move_ids:
+            done_qty = sum(move.move_line_ids.mapped("quantity"))
+            if done_qty <= 0:
+                continue
+
+            product = move.product_id
+            product_id = service.get_or_create_product(product)
+
+            line_dict = {
+                "item_type": "Product",
+                "item_id": product_id,
+                "item_code": product.default_code or product.name[:30],
+                "description": product.display_name[:100],
+                "quantity": done_qty,
+                "unit_of_measure": "un",
+                "unit_price": 0.0,
+            }
+
+            lines.append(line_dict)
+
+        if not lines:
+            return
+
+        payload = self._prepare_gr_payload(
+            service,
+            lines,
+            document_type=document_type,
+            parent_document_reference=parent_document_reference,
+        )
+
+        response = service.send_document(payload)
+
+        if response.status_code not in (200, 201):
+            self.toc_status = "error"
+            raise UserError(_("Error sending to TOConline: %s") % response.text)
+
+        data = response.json()
+
+        self.write({
+            "toc_status": "sent",
+            "toc_document_no": data.get("document_no"),
+            "toc_document_id": data.get("id"),
+        })
+
+        if self.toc_document_id:
+            self._download_and_attach_toc_pdf(service, document_type=document_type)
+
+    def _is_delivery_return(self):
+        self.ensure_one()
+        return bool(
+            self.return_id
+            and self.return_id.picking_type_code == "outgoing"
+            and self.picking_type_code == "incoming"
+        )
+
+    def _get_toc_shipment_partners(self):
+        self.ensure_one()
+        warehouse_partner = (
+                self.picking_type_id.warehouse_id.partner_id
+                or self.company_id.partner_id
+        )
+        if self.picking_type_code == "incoming":
+            return self.partner_id, warehouse_partner
+        return warehouse_partner, self.partner_id
 
 
     @staticmethod
@@ -72,26 +146,46 @@ class StockPicking(models.Model):
             return f"{digits[:4]}-{digits[4:7]}"
         return "0000-000"
 
-    def _prepare_gr_payload(self, service, lines, **kwargs):
-        """Prepare the payload for TOConline."""
+    def _get_toc_document_date(self, service, document_type):
+        """Return a document date that respects TOConline chronology.
+        """
         self.ensure_one()
-
-        is_internal = self.picking_type_code == "internal"
-
-        # In an internal movement, the fiscal recipient (customer) is the company itself.
-        # If outgoing, it's the customer (partner_id).
-        customer_partner = self.company_id.partner_id if is_internal else self.partner_id
-
-        # The unloading address is the partner filled in the picking (so we know where the installation site is)
-        # If none is provided, assume the company's address.
-        delivery_partner = self.partner_id if self.partner_id else self.company_id.partner_id
-
-        doc_date = (
+        base_date = (
             self.scheduled_date.date()
             if self.scheduled_date
             else fields.Date.today()
         )
+        doc_date = max(base_date, fields.Date.today())
 
+        last_toc_date = service.get_last_document_date(document_type=document_type)
+        if last_toc_date and last_toc_date > doc_date:
+            doc_date = last_toc_date
+
+        if doc_date > base_date:
+            self.sudo().write({"scheduled_date": doc_date})
+
+            _logger.warning(
+                "Picking %s: adjusting TOC document date from %s to %s for chronology.",
+                self.name, base_date, doc_date,
+            )
+            self.message_post(
+                body=_(
+                    "Scheduled date adjusted to %s to satisfy TOConline chronology."
+                ) % doc_date,
+            )
+        return doc_date
+
+    def _prepare_gr_payload(self, service, lines, document_type="GR", parent_document_reference=None):
+        """Prepare the payload for TOConline."""
+        self.ensure_one()
+        is_internal = self.picking_type_code == "internal"
+        # In an internal movement, the fiscal recipient (customer) is the company itself.
+        # If outgoing, it's the customer (partner_id).
+        customer_partner = self.company_id.partner_id if is_internal else self.partner_id
+        # The unloading address is the partner filled in the picking (so we know where the installation site is)
+        # If none is provided, assume the company's address.
+        delivery_partner = self.partner_id if self.partner_id else self.company_id.partner_id
+        doc_date = self._get_toc_document_date(service, document_type)
         warehouse = self.picking_type_id.warehouse_id
         from_partner = warehouse.partner_id or self.company_id.partner_id
 
@@ -161,6 +255,15 @@ class StockPicking(models.Model):
         if not is_internal and not self.partner_id:
             raise UserError(_("Delivery has no customer."))
 
+        parent_document_reference = None
+        if document_type == "GD":
+            if not self.return_id or not self.return_id.toc_document_no:
+                raise UserError(_(
+                    "The original delivery must have been sent to TOConline "
+                    "before its return can be registered."
+                ))
+            parent_document_reference = self.return_id.toc_document_no
+
         service = TocOnlineService(self.company_id, self.env)
 
         lines = []
@@ -171,58 +274,6 @@ class StockPicking(models.Model):
 
             product = move.product_id
             product_id = service.get_or_create_product(product)
-
-            # For internal transfers, we use the standard_price (cost) if there is no sale
-            unit_price = (
-                move.sale_line_id.price_unit
-                if move.sale_line_id
-                else product.standard_price
-            )
-            # If 0, use list_price as a fallback to avoid errors with AT
-            if unit_price <= 0:
-                unit_price = product.list_price
-
-            sale_line = move.sale_line_id
-
-            tax = (
-                sale_line.tax_ids.filtered(lambda t: t.type_tax_use == "sale")[:1]
-                if sale_line
-                else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
-            )
-
-            tax_code = "ISE"
-            tax_percentage = 0.0
-            tax_region = "PT"
-            tax_exemption_reason = None
-
-            if tax:
-                tax_percentage = round(tax.amount or 0.0, 2)
-
-                if tax_percentage == 23:
-                    tax_code = "NOR"
-                elif tax_percentage == 13:
-                    tax_code = "INT"
-                elif tax_percentage == 6:
-                    tax_code = "RED"
-                elif tax_percentage == 0:
-                    tax_code = "ISE"
-
-                    if self.l10npt_vat_exempt_reason:
-                        tax_exemption_reason = self.l10npt_vat_exempt_reason.code
-                    else:
-                        raise UserError(
-                            _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                            % product.display_name
-                        )
-            else:
-                tax_code = "NOR"
-
-            _logger.info(
-                "IVA aplicado: %s | %s%% | Código: %s",
-                tax.name if tax else "None",
-                tax_percentage,
-                tax_code,
-            )
 
             line_dict = {
                 "item_type": "Product",
@@ -242,7 +293,8 @@ class StockPicking(models.Model):
         if not lines:
             return
 
-        payload = self._prepare_gr_payload(service, lines)
+        payload = self._prepare_gr_payload(service, lines, document_type=document_type,
+                                           parent_document_reference=parent_document_reference)
         response = service.send_document(payload)
 
         if response.status_code not in (200, 201):
@@ -258,7 +310,7 @@ class StockPicking(models.Model):
         })
 
         if self.toc_document_id:
-            self._download_and_attach_toc_pdf(service)
+            self._download_and_attach_toc_pdf(service, document_type=document_type)
 
 
     def _communicate_to_at(self, service, toc_doc_id):
@@ -268,16 +320,20 @@ class StockPicking(models.Model):
             self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
 
 
-    def _download_and_attach_toc_pdf(self, service):
+    def _download_and_attach_toc_pdf(self, service, document_type):
         self.ensure_one()
 
         if self.toc_pdf_attached:
             return
 
+        safe_name = self.name.replace("/", "_") if self.name else "picking"
+        guia_subtype = {"GR": "Remessa", "GD": "Devolucao"}.get(document_type, document_type)
+        filename = f"Guia_{guia_subtype}_{safe_name}.pdf"
+
         service.download_and_attach_pdf(
-            self, self.toc_document_id, f"Waybill_{self.name}.pdf",
-            message=_("GR/GT PDF downloaded and attached."),
+            self, self.toc_document_id, filename,
+            message=_("%s PDF downloaded and attached.") % document_type,
         )
         self.write({"toc_pdf_attached": True})
 
-        _logger.info("PDF attached to picking %s", self.name)
+        _logger.info("%s PDF attached to picking %s", document_type, self.name)
