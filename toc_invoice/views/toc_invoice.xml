@@ -82,7 +82,7 @@
 
             <xpath expr="//button[@name='button_draft']" position="replace">
                 <button name="button_draft" string="Reset to Draft" type="object" groups="account.group_account_invoice"
-                        invisible="1" data-hotkey="r"/>
+                        invisible="company_id != 3 or not show_reset_to_draft_button" data-hotkey="r"/>
             </xpath>
 
             <xpath expr="//button[@name='action_print_pdf']" position="replace">
