@@ -27,7 +27,8 @@ class StockPicking(models.Model):
     toc_document_id = fields.Char("TOConline Document ID" , copy=False)
     toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
     toc_communication_code = fields.Char("AT Communication Code", copy=False)
-
+    use_license_plate = fields.Boolean(string='User License Plate')
+    vehicle_id = fields.Many2one('fleet.vehicle', string='Vehicle')
     # =====================================================
     # SEND GR / GT (Waybills)
     # =====================================================
@@ -207,7 +208,7 @@ class StockPicking(models.Model):
                 )
             tax_exemption_reason = exemption_id
 
-        return {
+        payload = {
             # ADDED: If internal, send as GT (Guia de Transporte), otherwise GR (Guia de Remessa)
             "document_type": "GT" if is_internal else "GR",
             "date": doc_date.strftime("%Y-%m-%d"),
@@ -241,6 +242,9 @@ class StockPicking(models.Model):
             "tax_exemption_reason_id": tax_exemption_reason,
             "lines": lines,
         }
+        if self.use_license_plate and self.vehicle_id and self.vehicle_id.license_plate:
+            payload["vehicle_registration_number"] = self.vehicle_id.license_plate
+        return payload
 
     def _send_delivery_to_toconline(self):
         self.ensure_one()

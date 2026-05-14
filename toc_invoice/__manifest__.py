@@ -5,7 +5,7 @@
     'summary': 'Portuguese certified invoices using TOCOnline',
     'category': 'Accounting/Accounting',
     "license": "AGPL-3",
-    'depends': ['base', 'web', 'contacts', 'product', 'account', 'sale_stock', 'l10n_pt_vat', 'repair'],
+    'depends': ['base', 'web', 'contacts', 'product', 'account', 'sale_stock', 'l10n_pt_vat', 'repair', 'fleet'],
     'data': [
         'security/ir.model.access.csv',
         'data/ir_cron_data.xml',
@@ -17,6 +17,7 @@
         'wizard/toc_account_move_reversal.xml',
         'views/sale_order_view.xml',
         'views/repair_form.xml',
+        'views/stock_picking_views.xml',
         'wizard/toc_cancel_invoice.xml',
         'wizard/toc_link_invoice.xml',
     ],
