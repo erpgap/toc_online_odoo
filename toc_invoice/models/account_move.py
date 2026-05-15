@@ -409,7 +409,7 @@ class AccountMove(models.Model):
             })
 
             toc_company_id = data.get('company_id')
-            if toc_company_id:
+            if toc_company_id and self.env.user.has_group('base.group_system'):
                 record.company_id.toc_company_id = toc_company_id
 
     def action_cancel_invoice_toconline(self):
