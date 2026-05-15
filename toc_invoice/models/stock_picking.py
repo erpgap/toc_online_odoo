@@ -243,7 +243,7 @@ class StockPicking(models.Model):
             "lines": lines,
         }
         if self.use_license_plate and self.vehicle_id and self.vehicle_id.license_plate:
-            payload["vehicle_registration_number"] = self.vehicle_id.license_plate
+            payload["vehicle_registration"] = self.vehicle_id.license_plate
         return payload
 
     def _send_delivery_to_toconline(self):
