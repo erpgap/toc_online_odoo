@@ -4,8 +4,6 @@ import requests
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-
 _logger = logging.getLogger(__name__)
 
 

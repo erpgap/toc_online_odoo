@@ -2,8 +2,6 @@ import requests
 from datetime import timedelta
 
 from odoo import models, fields, api, _
-from odoo.addons.toc_invoice.utils import token_url
-
 
 
 class ResConfigSettings(models.TransientModel):
@@ -23,6 +21,21 @@ class ResConfigSettings(models.TransientModel):
         string="Company ID",
         related='company_id.toc_company_id',
         readonly=True
+    )
+    toc_api_url = fields.Char(
+        string="API Base URL",
+        related='company_id.toc_api_url',
+        readonly=False,
+    )
+    toc_auth_url = fields.Char(
+        string="OAuth Authentication URL",
+        related='company_id.toc_auth_url',
+        readonly=False,
+    )
+    toc_redirect_uri = fields.Char(
+        string="Redirect URI",
+        related='company_id.toc_redirect_uri',
+        readonly=False,
     )
 
     @api.model
@@ -58,12 +71,12 @@ class ResConfigSettings(models.TransientModel):
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
         authorization_code = self.env['ir.config_parameter'].sudo().get_param('toc_online.authorization_code')
-        redirect_uri = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        redirect_uri = company._get_toc_redirect_uri()
 
         if not authorization_code:
             raise ValueError(_("Missing Authorization Code."))
 
-        url = token_url
+        url = company._get_toc_token_url()
         data = {
             'grant_type': 'authorization_code',
             'code': authorization_code,

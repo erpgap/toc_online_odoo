@@ -4,10 +4,6 @@ import requests
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-
-
-
 class AccountPaymentRegister(models.TransientModel):
     _inherit = 'account.payment.register'
 
@@ -73,7 +69,7 @@ class AccountPaymentRegister(models.TransientModel):
                 "user_id": user_id,
             }
 
-            endpoint = f"{TOC_BASE_URL}/api/v1/commercial_sales_receipts"
+            endpoint = f"{company._get_toc_api_url()}/api/v1/commercial_sales_receipts"
 
             try:
                 response = self.env['toc.api'].toc_request(

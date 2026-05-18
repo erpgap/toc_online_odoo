@@ -7,8 +7,6 @@ from odoo import models, fields, _
 from odoo.exceptions import UserError
 from markupsafe import Markup
 
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-
 _logger = logging.getLogger(__name__)
 
 
@@ -173,7 +171,7 @@ class StockPicking(models.Model):
 
         response = toc_api.toc_request(
             method="POST",
-            url=f"{TOC_BASE_URL}/api/v1/commercial_sales_documents",
+            url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents",
             payload=payload,
             access_token=access_token,
         )
@@ -275,7 +273,7 @@ class StockPicking(models.Model):
 
         response = self.env["toc.api"].toc_request(
             method="POST",
-            url=f"{TOC_BASE_URL}/api/send_document_at_webservice",
+            url=f"{self.company_id._get_toc_api_url()}/api/send_document_at_webservice",
             payload=payload_at,
             access_token=access_token,
         )
@@ -293,7 +291,7 @@ class StockPicking(models.Model):
             return
 
         url_api = (
-            f"{TOC_BASE_URL}/api/url_for_print/"
+            f"{self.company_id._get_toc_api_url()}/api/url_for_print/"
             f"{self.toc_document_id}?filter[type]=Document&filter[copies]=1"
         )
 

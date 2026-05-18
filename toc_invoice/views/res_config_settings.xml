@@ -24,6 +24,23 @@
                         </div>
                         <div class="row mt16">
                             <div class="col-6">
+                                <setting string="API Base URL">
+                                    <field name="toc_api_url"/>
+                                </setting>
+                            </div>
+                            <div class="col-6">
+                                <setting string="OAuth Authentication URL">
+                                    <field name="toc_auth_url"/>
+                                </setting>
+                            </div>
+                        </div>
+                        <div class="row mt16">
+                            <div class="col-6">
+                                <setting string="Redirect URI">
+                                    <field name="toc_redirect_uri"/>
+                                </setting>
+                            </div>
+                            <div class="col-6">
                                 <setting string="TOConline Company ID">
                                     <field name="toc_company_id"
                                            readonly="1"

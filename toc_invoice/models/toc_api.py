@@ -8,9 +8,6 @@ from urllib.parse import urlparse, parse_qs
 from odoo import models, fields, _
 from odoo.exceptions import UserError
 
-from odoo.addons.toc_invoice.utils import redirect_uri, auth_url, token_url
-from odoo.addons.toc_invoice.utils import TOC_BASE_URL
-
 _logger = logging.getLogger(__name__)
 
 TOC_TIMEOUT = 120
@@ -25,7 +22,7 @@ class TocAPI(models.AbstractModel):
     def get_tax_exemption_reason_id(self, access_token, reason_code):
         response = self.toc_request(
             method="GET",
-            url=f"{TOC_BASE_URL}/tax_exemption_reasons?filter[code]={reason_code}",
+            url=f"{self.env.company._get_toc_api_url()}/tax_exemption_reasons?filter[code]={reason_code}",
             access_token=access_token,
         )
 
@@ -43,7 +40,7 @@ class TocAPI(models.AbstractModel):
 
     def fetch_vat_exemption_reasons(self):
         access_token = self.get_access_token()
-        url = f"{TOC_BASE_URL}/api/tax_descriptors"
+        url = f"{self.env.company._get_toc_api_url()}/api/tax_descriptors"
 
         try:
             response = self.toc_request(
@@ -145,10 +142,10 @@ class TocAPI(models.AbstractModel):
 
         if not client_id or not client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured."))
-        url_aux = f"{auth_url}/auth?"
+        url_aux = f"{company._get_toc_auth_url()}/auth?"
         params = {
             "client_id": client_id,
-            "redirect_uri": redirect_uri,
+            "redirect_uri": company._get_toc_redirect_uri(),
             "response_type": "code",
             "scope": "commercial"
         }
@@ -179,14 +176,14 @@ class TocAPI(models.AbstractModel):
         payload = {
             "grant_type": "authorization_code",
             "code": authorization_code,
-            "redirect_uri": redirect_uri
+            "redirect_uri": company._get_toc_redirect_uri()
         }
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Authorization": f"Basic {base64_credentials}"
         }
 
-        response = requests.post(token_url, data=payload, headers=headers)
+        response = requests.post(company._get_toc_token_url(), data=payload, headers=headers)
         if response.status_code == 200:
             tokens = response.json()
             access_token = tokens.get("access_token")
@@ -273,7 +270,7 @@ class TocAPI(models.AbstractModel):
             "Accept": "application/json",
             "Authorization": f"Basic {base64_credentials}"
         }
-        response = requests.post(token_url, data=payload, headers=headers)
+        response = requests.post(company._get_toc_token_url(), data=payload, headers=headers)
 
         if response.status_code == 200:
             tokens = response.json()
