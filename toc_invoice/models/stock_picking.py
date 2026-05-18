@@ -19,115 +19,127 @@ class StockPicking(models.Model):
         ("draft", "Draft"),
         ("sent", "Sent"),
         ("error", "Error"),
-    ], default="draft", string="TOConline Status")
+    ], default="draft", string="TOConline Status", copy=False)
 
-    toc_document_no = fields.Char("TOConline Document No")
-    toc_document_id = fields.Char("TOConline Document ID")
-    toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False)
-    toc_communication_code = fields.Char("AT Communication Code")
+    toc_document_no = fields.Char("TOConline Document No", copy=False)
+    toc_document_id = fields.Char("TOConline Document ID", copy=False)
+    toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
+    toc_communication_code = fields.Char("AT Communication Code", copy=False)
 
 
     # =====================================================
-    # SEND GR
+    # SEND GR / GT / GD
     # =====================================================
-    from odoo import _, fields
-    from odoo.exceptions import UserError
-    from markupsafe import Markup
-    import logging
-
-    _logger = logging.getLogger(__name__)
-
 
     def button_validate(self):
         res = super().button_validate()
         for picking in self:
             company = picking.company_id
             toc_enabled = company.toc_online_client_id and company.toc_online_client_secret
-            if picking.picking_type_code == "outgoing" and picking.state == "done" and toc_enabled:
-                picking._send_delivery_to_toconline()
+            if picking.state == "done" and toc_enabled:
+                if picking.picking_type_code == "outgoing":
+                    picking._send_transport_doc_to_toconline(document_type="GR")
+                elif picking.picking_type_code == "internal":
+                    picking._send_transport_doc_to_toconline(document_type="GT")
+                elif picking._is_delivery_return():
+                    picking._send_transport_doc_to_toconline(document_type="GD")
         return res
 
+    def _is_delivery_return(self):
+        self.ensure_one()
+        return bool(
+            self.return_id
+            and self.return_id.picking_type_code == "outgoing"
+            and self.picking_type_code == "incoming"
+        )
 
-    def _send_delivery_to_toconline(self):
+    def _get_toc_shipment_partners(self):
+        """Return (from_partner, to_partner) for the TOC shipment payload."""
+        self.ensure_one()
+        warehouse_partner = (
+            self.picking_type_id.warehouse_id.partner_id
+            or self.company_id.partner_id
+        )
+        if self.picking_type_code == "incoming":
+            # Return: goods travel from the customer back to the warehouse.
+            return self.partner_id, warehouse_partner
+        # Outgoing or internal: from the warehouse to the customer / company.
+        return warehouse_partner, self.partner_id or self.company_id.partner_id
+
+    @staticmethod
+    def _zip_pt(zip_code):
+        if not zip_code:
+            return "0000-000"
+        digits = "".join(filter(str.isdigit, zip_code))
+        if len(digits) >= 7:
+            return f"{digits[:4]}-{digits[4:7]}"
+        return "0000-000"
+
+
+    def _send_transport_doc_to_toconline(self, document_type):
+        """Send a transport document (GR, GT, or GD) to TOConline.
+        """
         self.ensure_one()
 
         if self.toc_status == "sent":
             return
 
-        if not self.partner_id:
-            raise UserError(_("Delivery has no customer."))
+        is_internal = document_type == "GT"
+        is_return = document_type == "GD"
+
+        if not is_internal and not self.partner_id:
+            raise UserError(_("Picking has no partner."))
+
+        parent_document_reference = None
+        exempt_reason_source_order = self.sale_id  # GR default
+        if is_internal:
+            exempt_reason_source_order = False
+        elif is_return:
+            if not self.return_id or not self.return_id.toc_document_no:
+                raise UserError(_(
+                    "The original delivery must have been sent to TOConline "
+                    "before its return can be registered."
+                ))
+            parent_document_reference = self.return_id.toc_document_no
+            exempt_reason_source_order = self.return_id.sale_id
 
         toc_api = self.env["toc.api"]
         access_token = toc_api.get_access_token()
-
         if not access_token:
             raise UserError(_("Could not obtain TOConline access token."))
 
-        move_model = self.env["account.move"]
-
-
         lines = []
-        for move in self.move_ids_without_package:
+        for move in self.move_ids:
             done_qty = sum(move.move_line_ids.mapped("quantity"))
             if done_qty <= 0:
                 continue
 
             product = move.product_id
-            product_id = move_model.get_or_create_product_in_toconline(access_token, product)
+            product_id = self.env["account.move"].get_or_create_product_in_toconline(access_token, product)
 
-            unit_price = (
-                move.sale_line_id.price_unit
-                if move.sale_line_id
-                else product.list_price
-            )
-
-            sale_line = move.sale_line_id
-
-            tax = (
-                sale_line.tax_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
-                if sale_line
-                else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
-            )
+            if is_internal:
+                unit_price = product.standard_price or product.list_price
+                tax = product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+            else:
+                sale_line = move.sale_line_id or (
+                    is_return
+                    and move.origin_returned_move_id
+                    and move.origin_returned_move_id.sale_line_id
+                )
+                unit_price = sale_line.price_unit if sale_line else product.list_price
+                tax = (
+                    sale_line.tax_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+                    if sale_line
+                    else product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+                )
 
             tax_code = "ISE"
             tax_percentage = 0.0
-            tax_region = "PT"
-            tax_exemption_reason = None
-
-
             if tax:
                 tax_percentage = round(tax.amount or 0.0, 2)
+                tax_code = {23: "NOR", 13: "INT", 6: "RED", 0: "ISE"}.get(tax_percentage, "NOR")
 
-                if tax_percentage == 23:
-                    tax_code = "NOR"
-                elif tax_percentage == 13:
-                    tax_code = "INT"
-                elif tax_percentage == 6:
-                    tax_code = "RED"
-                elif tax_percentage == 0:
-                    tax_code = "ISE"
-
-                    if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
-                        tax_exemption_reason = (
-                            sale_line.order_id.l10npt_vat_exempt_reason.code
-                        )
-                    else:
-                        raise UserError(
-                            _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                            % product.display_name
-                        )
-                else:
-                    tax_code = "NOR"
-
-                _logger.info(
-                    "IVA aplicado: %s | %s%% | Código: %s",
-                    tax.name,
-                    tax_percentage,
-                    tax_code,
-                )
-
-
-            line_dict = {
+            lines.append({
                 "item_type": "Product",
                 "item_id": product_id,
                 "item_code": product.default_code or product.name[:30],
@@ -137,114 +149,27 @@ class StockPicking(models.Model):
                 "unit_price": unit_price,
                 "tax_code": tax_code,
                 "tax_percentage": tax_percentage,
-                "tax_country_region": tax_region,
-            }
-
-
-
-            lines.append(line_dict)
+                "tax_country_region": "PT",
+            })
 
         if not lines:
             return
 
-        partner = self.partner_id
+        tax_exemption_reason_id = None
+        if exempt_reason_source_order and exempt_reason_source_order.l10npt_vat_exempt_reason:
+            code = exempt_reason_source_order.l10npt_vat_exempt_reason.code
+            tax_exemption_reason_id = toc_api.get_tax_exemption_reason_id(access_token, code)
+            if not tax_exemption_reason_id:
+                raise UserError(
+                    _("Motivo de isenção '%s' não encontrado no TOConline.") % code
+                )
 
-        doc_date = (
-            self.scheduled_date.date()
-            if self.scheduled_date
-            else fields.Date.today()
+        payload = self._prepare_gr_payload(
+            lines,
+            document_type=document_type,
+            parent_document_reference=parent_document_reference,
+            tax_exemption_reason_id=tax_exemption_reason_id,
         )
-
-        warehouse = self.picking_type_id.warehouse_id
-        from_partner = warehouse.partner_id or self.company_id.partner_id
-        to_partner = self.env.company
-        # to_partner = self.partner_id
-
-        current_datetime = fields.Datetime.now()
-        loading_time = self.scheduled_date if self.scheduled_date and self.scheduled_date >= current_datetime else current_datetime
-
-        def zip_pt(zip_code):
-            if not zip_code:
-                return "0000-000"
-            digits = ''.join(filter(str.isdigit, zip_code))
-            if len(digits) >= 7:
-                return f"{digits[:4]}-{digits[4:7]}"
-            return "0000-000"
-
-        if tax_percentage == 0:
-                if not tax_exemption_reason:
-                    raise UserError(
-                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                        % product.display_name
-                    )
-
-                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
-                    access_token,
-                    tax_exemption_reason,
-                )
-
-                if not exemption_id:
-                    raise UserError(
-                        _("Motivo de isenção '%s' não encontrado no TOConline.")
-                        % tax_exemption_reason
-                    )
-
-                tax_exemption_reason = exemption_id
-
-        for move in self.move_ids_without_package:
-            sale_line = move.sale_line_id
-
-            if sale_line and sale_line.order_id.l10npt_vat_exempt_reason:
-                tax_exemption_reason = sale_line.order_id.l10npt_vat_exempt_reason.code
-                if not tax_exemption_reason:
-                    raise UserError(
-                        _("Linha '%s' com IVA 0%% precisa de motivo de isenção.")
-                        % product.display_name
-                    )
-
-                exemption_id = self.env["toc.api"].get_tax_exemption_reason_id(
-                    access_token,
-                    tax_exemption_reason,
-                )
-
-                if not exemption_id:
-                    raise UserError(
-                        _("Motivo de isenção '%s' não encontrado no TOConline.")
-                        % tax_exemption_reason
-                    )
-
-                tax_exemption_reason = exemption_id
-                break
-
-        payload = {
-            "document_type": "GR",
-            "date": doc_date.strftime("%Y-%m-%d"),
-            "external_reference": self.name,
-
-            "customer_business_name": partner.name,
-            "customer_tax_registration_number": partner.vat or "999999990",
-            "customer_address_detail": partner.street or "",
-            "customer_postcode": partner.zip or "0000-000",
-            "customer_city": partner.city or "",
-            "customer_country": partner.country_id.code or "PT",
-
-            "shipment_from_address_detail": to_partner.street or "",
-            "shipment_from_postcode": zip_pt(to_partner.zip),
-            "shipment_from_city": to_partner.city or "",
-            "shipment_from_country": to_partner.country_id.code if to_partner.country_id else "PT",
-
-
-            "operation_country": "PT",
-
-            # DESCARGA (OBRIGATÓRIO GR)
-            "shipment_address_detail": partner.street or "",
-            "shipment_city": partner.city or "",
-            "shipment_postcode": zip_pt(partner.zip),
-            "shipment_country": partner.country_id.code or "PT",
-            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(pytz.timezone('Europe/Lisbon')).strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "tax_exemption_reason_id": tax_exemption_reason,
-            "lines": lines,
-        }
 
         response = toc_api.toc_request(
             method="POST",
@@ -258,16 +183,71 @@ class StockPicking(models.Model):
             raise UserError(_("Error sending to TOConline: %s") % response.text)
 
         data = response.json()
-
         self.write({
             "toc_status": "sent",
             "toc_document_no": data.get("document_no"),
             "toc_document_id": data.get("id"),
         })
 
-
         if self.toc_document_id:
-            self._download_and_attach_toc_pdf(access_token)
+            self._download_and_attach_toc_pdf(access_token, document_type=document_type)
+
+
+    def _prepare_gr_payload(self, lines, document_type="GR",
+                            parent_document_reference=None,
+                            tax_exemption_reason_id=None):
+        """Build the TOConline payload for a transport document (GR/GT/GD)."""
+        self.ensure_one()
+        is_internal = document_type == "GT"
+
+        customer_partner = self.company_id.partner_id if is_internal else self.partner_id
+        from_partner, to_partner = self._get_toc_shipment_partners()
+
+        doc_date = (
+            self.scheduled_date.date()
+            if self.scheduled_date
+            else fields.Date.today()
+        )
+        current_datetime = fields.Datetime.now()
+        loading_time = (
+            self.scheduled_date
+            if self.scheduled_date and self.scheduled_date >= current_datetime
+            else current_datetime
+        )
+
+        payload = {
+            "document_type": document_type,
+            "date": doc_date.strftime("%Y-%m-%d"),
+            "external_reference": self.name,
+
+            "customer_business_name": customer_partner.name,
+            "customer_tax_registration_number": customer_partner.vat or "999999990",
+            "customer_address_detail": customer_partner.street or "",
+            "customer_postcode": self._zip_pt(customer_partner.zip),
+            "customer_city": customer_partner.city or "",
+            "customer_country": customer_partner.country_id.code or "PT",
+
+            "shipment_from_address_detail": from_partner.street or "",
+            "shipment_from_postcode": self._zip_pt(from_partner.zip),
+            "shipment_from_city": from_partner.city or "",
+            "shipment_from_country": from_partner.country_id.code if from_partner.country_id else "PT",
+
+            "operation_country": "PT",
+
+            "shipment_address_detail": to_partner.street or "",
+            "shipment_city": to_partner.city or "",
+            "shipment_postcode": self._zip_pt(to_partner.zip),
+            "shipment_country": to_partner.country_id.code if to_partner.country_id else "PT",
+            "shipment_loading_time": pytz.utc.localize(loading_time).astimezone(
+                pytz.timezone("Europe/Lisbon")
+            ).strftime("%Y-%m-%dT%H:%M:%S%z"),
+
+            "tax_exemption_reason_id": tax_exemption_reason_id,
+            "lines": lines,
+        }
+        if parent_document_reference:
+            payload["parent_document_reference"] = parent_document_reference
+        return payload
 
 
     def _communicate_to_at(self, access_token, toc_doc_id):
@@ -306,7 +286,7 @@ class StockPicking(models.Model):
             self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
 
 
-    def _download_and_attach_toc_pdf(self, access_token):
+    def _download_and_attach_toc_pdf(self, access_token, document_type="GR"):
         self.ensure_one()
 
         if self.toc_pdf_attached:
@@ -324,7 +304,7 @@ class StockPicking(models.Model):
         )
 
         if response.status_code != 200:
-            raise UserError(_("Failed to get GR PDF URL from TOConline."))
+            raise UserError(_("Failed to get %s PDF URL from TOConline.") % document_type)
 
         try:
             url_data = response.json()["data"]["attributes"]["url"]
@@ -334,10 +314,18 @@ class StockPicking(models.Model):
 
         pdf_response = requests.get(pdf_url)
         if pdf_response.status_code != 200:
-            raise UserError(_("Failed to download GR PDF."))
+            raise UserError(_("Failed to download %s PDF.") % document_type)
+
+        safe_name = (self.name or "picking").replace("/", "_")
+        # GR keeps its historical filename to preserve existing behavior.
+        if document_type == "GR":
+            attachment_name = f"Guia_{safe_name}.pdf"
+        else:
+            guia_subtype = {"GD": "Devolucao", "GT": "Transporte"}.get(document_type, document_type)
+            attachment_name = f"Guia_{guia_subtype}_{safe_name}.pdf"
 
         attachment = self.env["ir.attachment"].create({
-            "name": f"Guia_{self.name}.pdf",
+            "name": attachment_name,
             "res_model": "stock.picking",
             "res_id": self.id,
             "type": "binary",
@@ -348,8 +336,8 @@ class StockPicking(models.Model):
         self.write({"toc_pdf_attached": True})
 
         self.message_post(
-            body=Markup(_("GR PDF downloaded and attached.")),
+            body=Markup(_("%s PDF downloaded and attached.") % document_type),
             attachment_ids=[attachment.id],
         )
 
-        _logger.info("GR PDF attached to picking %s", self.name)
+        _logger.info("%s PDF attached to picking %s", document_type, self.name)
