@@ -107,6 +107,22 @@ class AccountMove(models.Model):
                 if record.invoice_date_due and record.invoice_date_due < today:
                     raise ValidationError("The due date must be today or a future date.")
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('move_type') != 'out_refund' or vals.get('reversed_entry_id'):
+                continue
+            journal_id = vals.get('journal_id')
+            if not journal_id:
+                continue
+            journal = self.env['account.journal'].browse(journal_id)
+            if journal.send_to_toconline:
+                raise UserError(_(
+                    "Credit notes must be created from an existing invoice when TOConline is "
+                    "enabled. Please open the original invoice and use the 'Credit Note' action."
+                ))
+        return super().create(vals_list)
+
     @api.constrains('state')
     def _check_state_invoice(self):
         for record in self:
@@ -422,13 +438,17 @@ class AccountMove(models.Model):
 
         res = super().action_post()
         for move in self:
+            if not move.journal_id.send_to_toconline:
+                continue
+            if not move.invoice_date:
+                continue
             previous_invoice = self.env['account.move'].search([
-                ('id', '=', move.id - 1),
                 ('move_type', '=', move.move_type),
                 ('journal_id', '=', move.journal_id.id),
                 ('company_id', '=', move.company_id.id),
                 ('state', '=', 'draft'),
-            ], limit=1)
+                ('invoice_date', '<', move.invoice_date),
+            ], order='invoice_date asc', limit=1)
 
             if previous_invoice:
                 ref = previous_invoice.name or previous_invoice.ref or str(previous_invoice.invoice_date)
@@ -971,20 +991,6 @@ class AccountMove(models.Model):
                 toc_document_id = response_data.get("id")
                 if toc_document_id:
                     self.download_and_attach_invoice_pdf(records, toc_document_id, access_token)
-
-    def write(self, vals):
-        restricted_fields = {
-            'invoice_line_ids', 'partner_id', 'invoice_date', 'invoice_date_due',
-            'currency_id', 'journal_id', 'amount_total', 'amount_untaxed', 'amount_tax'
-        }
-
-        for move in self:
-            if move.toc_status == 'sent' and move.state != 'cancel':
-                if any(field in vals for field in restricted_fields):
-                    raise UserError(
-                        _("This invoice has already been sent to TOConline and can no longer be edited. Please cancel it or create a credit note."))
-
-        return super().write(vals)
 
     def download_and_attach_invoice_pdf(self, record, toc_document_id, access_token):
         """
