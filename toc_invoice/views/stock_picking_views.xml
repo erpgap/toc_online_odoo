@@ -5,8 +5,8 @@
         <field name="inherit_id" ref="stock.view_picking_form" />
         <field name="arch" type="xml">
             <xpath expr="//label[@for='carrier_tracking_ref']" position="before">
-                <field name="use_license_plate" invisible="company_id != 1" group="fleet.fleet_group_user"/>
-                <field name="vehicle_id" invisible="not use_license_plate or company_id != 1" group="fleet.fleet_group_user"/>
+                <field name="use_license_plate" invisible="company_id != 1" groups="fleet.fleet_group_user"/>
+                <field name="vehicle_id" invisible="not use_license_plate or company_id != 1" groups="fleet.fleet_group_user"/>
             </xpath>
         </field>
     </record>
