@@ -7,6 +7,11 @@ from odoo import models, fields, api, _
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
+    toc_online_enabled = fields.Boolean(
+        string="Send to TOC Online",
+        related='company_id.toc_online_enabled',
+        readonly=False,
+    )
     toc_online_client_id = fields.Char(
         string="Client ID",
         related='company_id.toc_online_client_id',
@@ -38,39 +43,21 @@ class ResConfigSettings(models.TransientModel):
         readonly=False,
     )
 
-    @api.model
-    def get_values(self):
-        res = super().get_values()
-        company = self.env.company
-        res.update({
-            'toc_online_client_id': company.toc_online_client_id,
-            'toc_online_client_secret': company.toc_online_client_secret,
-        })
-        return res
-
-    def set_values(self):
-        super().set_values()
-        company = self.env.company
-        company.write({
-            'toc_online_client_id': self.toc_online_client_id,
-            'toc_online_client_secret': self.toc_online_client_secret,
-        })
-
-
     @api.onchange('toc_online_client_id', 'toc_online_client_secret')
     def _onchange_clear_tokens_if_missing_credentials(self):
         if not self.toc_online_client_id or not self.toc_online_client_secret:
-            config = self.env['ir.config_parameter'].sudo()
-            config.set_param('toc_online.access_token', '')
-            config.set_param('toc_online.refresh_token', '')
-            config.set_param('toc_online.token_expiry', '')
+            self.company_id.sudo().write({
+                'toc_online_access_token': False,
+                'toc_online_refresh_token': False,
+                'toc_online_token_expiry': False,
+            })
 
     def exchange_authorization_code_and_save_tokens(self):
-        company = self.env.company
+        company = self.env.company.sudo()
 
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
-        authorization_code = self.env['ir.config_parameter'].sudo().get_param('toc_online.authorization_code')
+        authorization_code = company.toc_online_authorization_code
         redirect_uri = company._get_toc_redirect_uri()
 
         if not authorization_code:
@@ -91,9 +78,11 @@ class ResConfigSettings(models.TransientModel):
 
         tokens = response.json()
 
-        company.toc_online_access_token = tokens.get('access_token', '')
-        company.toc_online_refresh_token = tokens.get('refresh_token', '')
-        company.toc_online_token_expiry = fields.Datetime.now() + timedelta(seconds=tokens.get('expires_in', 3600))
+        company.write({
+            'toc_online_access_token': tokens.get('access_token', ''),
+            'toc_online_refresh_token': tokens.get('refresh_token', ''),
+            'toc_online_token_expiry': fields.Datetime.now() + timedelta(seconds=tokens.get('expires_in', 3600)),
+        })
 
         return {
             'type': 'ir.actions.client',

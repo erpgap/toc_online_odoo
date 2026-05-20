@@ -9,8 +9,8 @@ class AccountPaymentRegister(models.TransientModel):
 
     def action_create_payments(self):
         res = super().action_create_payments()
-        for wizard in self:
-            access_token = self.env['toc.api'].get_access_token()
+        for wizard in self.filtered(lambda w: w.company_id.toc_online_enabled):
+            access_token = self.env['toc.api'].get_access_token(company=wizard.company_id)
             if not access_token:
                 raise UserError(_("TOConline access token not found"))
 

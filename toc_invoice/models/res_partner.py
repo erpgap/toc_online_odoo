@@ -34,10 +34,14 @@ class ResPartner(models.Model):
         """
         self.ensure_one()
 
-        access_token = self.env['toc.api'].get_access_token()  # ajuste com a forma como seu token é gerado
+        company = self.env.company
+        if not company.toc_online_enabled:
+            return
+
+        access_token = self.env['toc.api'].get_access_token(company=company)
 
         customer_id = self.toc_online_id
-        update_url = f"{self.env.company._get_toc_api_url()}/api/customers/{customer_id}"
+        update_url = f"{company._get_toc_api_url()}/api/customers/{customer_id}"
 
         tax_number = self.vat.replace(" ", "").strip() if self.vat else "999999990"
         if len(tax_number) > 2 and tax_number[:2].isalpha():

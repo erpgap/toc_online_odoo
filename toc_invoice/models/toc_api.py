@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 import requests
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlparse, parse_qs
 
 from odoo import models, fields, _
@@ -19,10 +19,11 @@ class TocAPI(models.AbstractModel):
     client_id = fields.Char(string="Client ID")
     client_secret = fields.Char(string="Client Secret")
 
-    def get_tax_exemption_reason_id(self, access_token, reason_code):
+    def get_tax_exemption_reason_id(self, access_token, reason_code, company=None):
+        company = (company or self.env.company).sudo()
         response = self.toc_request(
             method="GET",
-            url=f"{self.env.company._get_toc_api_url()}/tax_exemption_reasons?filter[code]={reason_code}",
+            url=f"{company._get_toc_api_url()}/tax_exemption_reasons?filter[code]={reason_code}",
             access_token=access_token,
         )
 
@@ -38,9 +39,10 @@ class TocAPI(models.AbstractModel):
 
         return data[0]["id"]
 
-    def fetch_vat_exemption_reasons(self):
-        access_token = self.get_access_token()
-        url = f"{self.env.company._get_toc_api_url()}/api/tax_descriptors"
+    def fetch_vat_exemption_reasons(self, company=None):
+        company = (company or self.env.company).sudo()
+        access_token = self.get_access_token(company=company)
+        url = f"{company._get_toc_api_url()}/api/tax_descriptors"
 
         try:
             response = self.toc_request(
@@ -147,7 +149,7 @@ class TocAPI(models.AbstractModel):
             "client_id": client_id,
             "redirect_uri": company._get_toc_redirect_uri(),
             "response_type": "code",
-            "scope": "commercial"
+            "scope": "commercial",
         }
 
         response = requests.get(url_aux, params=params, headers={"Content-Type": "application/json"}, allow_redirects=False)
@@ -163,7 +165,6 @@ class TocAPI(models.AbstractModel):
 
     def _get_tokens(self, authorization_code, company=None):
         company = (company or self.env.company).sudo()
-        config = self.env['ir.config_parameter'].sudo()
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
 
@@ -189,14 +190,16 @@ class TocAPI(models.AbstractModel):
             access_token = tokens.get("access_token")
             refresh_token = tokens.get("refresh_token")
             expires_in = tokens.get("expires_in", 3600)
-            expiry_datetime = datetime.now() + timedelta(seconds=expires_in)
+            expiry_datetime = fields.Datetime.now() + timedelta(seconds=expires_in)
 
             if not refresh_token:
                 raise UserError(_("Error: Refresh token not found in TOConline response."))
 
-            config.set_param('toc_online.refresh_token', refresh_token)
-            config.set_param('toc_online.access_token', access_token)
-            config.set_param('toc_online.token_expiry', expiry_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+            company.write({
+                'toc_online_access_token': access_token,
+                'toc_online_refresh_token': refresh_token,
+                'toc_online_token_expiry': expiry_datetime,
+            })
 
             return {"access_token": access_token, "refresh_token": refresh_token}
         else:
@@ -204,20 +207,21 @@ class TocAPI(models.AbstractModel):
 
     def get_access_token(self, company=None):
         company = (company or self.env.company).sudo()
-        config = self.env['ir.config_parameter'].sudo()
 
         if not company.toc_online_client_id or not company.toc_online_client_secret:
             raise UserError(_("Client ID and/or Client Secret not configured. Cannot proceed with TOConline operation."))
 
-        access_token = config.get_param('toc_online.access_token')
+        access_token = company.toc_online_access_token
 
-        if not access_token or self.is_token_expired():
+        if not access_token or self.is_token_expired(company=company):
             try:
                 access_token = self.refresh_access_token(company=company)
             except UserError:
-                config.set_param('toc_online.access_token', '')
-                config.set_param('toc_online.token_expiry', '')
-                config.set_param('toc_online.refresh_token', '')
+                company.write({
+                    'toc_online_access_token': False,
+                    'toc_online_token_expiry': False,
+                    'toc_online_refresh_token': False,
+                })
 
                 redirect_auth_url = self.get_authorization_url(company=company)
                 code = self._extract_authorization_code_from_url(redirect_auth_url)
@@ -232,21 +236,16 @@ class TocAPI(models.AbstractModel):
         return access_token
 
 
-    def is_token_expired(self):
-        config = self.env['ir.config_parameter'].sudo()
-        token_expiry = config.get_param('toc_online.token_expiry')
+    def is_token_expired(self, company=None):
+        company = (company or self.env.company).sudo()
+        token_expiry = company.toc_online_token_expiry
         if not token_expiry:
             return True
-        try:
-            expiry_dt = datetime.strptime(token_expiry, "%Y-%m-%d %H:%M:%S")
-            return expiry_dt < datetime.now()
-        except Exception:
-            return True
+        return token_expiry < fields.Datetime.now()
 
     def refresh_access_token(self, company=None):
-        config = self.env['ir.config_parameter'].sudo()
-        refresh_token = config.get_param('toc_online.refresh_token')
         company = (company or self.env.company).sudo()
+        refresh_token = company.toc_online_refresh_token
 
         client_id = company.toc_online_client_id
         client_secret = company.toc_online_client_secret
@@ -277,18 +276,23 @@ class TocAPI(models.AbstractModel):
             access_token = tokens.get("access_token")
             refresh_token_response = tokens.get("refresh_token")
             expires_in = tokens.get("expires_in", 3600)
-            expiry_datetime = datetime.now() + timedelta(seconds=expires_in)
+            expiry_datetime = fields.Datetime.now() + timedelta(seconds=expires_in)
 
-            config.set_param('toc_online.access_token', access_token)
-            config.set_param('toc_online.token_expiry', expiry_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+            vals = {
+                'toc_online_access_token': access_token,
+                'toc_online_token_expiry': expiry_datetime,
+            }
             if refresh_token_response:
-                config.set_param('toc_online.refresh_token', refresh_token_response)
+                vals['toc_online_refresh_token'] = refresh_token_response
+            company.write(vals)
             return access_token
 
         elif response.status_code == 401:
-            config.set_param('toc_online.refresh_token', '')
-            config.set_param('toc_online.access_token', '')
-            config.set_param('toc_online.token_expiry', '')
+            company.write({
+                'toc_online_refresh_token': False,
+                'toc_online_access_token': False,
+                'toc_online_token_expiry': False,
+            })
 
             auth_url_response = self.get_authorization_url(company=company)
             if isinstance(auth_url_response, dict) and "error" in auth_url_response:

@@ -25,6 +25,9 @@ class AccountPayment(models.Model):
             return False
 
         invoice = invoices[0]
+
+        if not invoice.toc_online_enabled:
+            return False
         try:
             toc_receipt_ids = json.loads(invoice.toc_receipt_ids or "[]")
             if not isinstance(toc_receipt_ids, list):
@@ -112,12 +115,19 @@ class AccountPayment(models.Model):
             return False
 
     def get_receipt_data(self, receipt_id):
-        access_token = self.env['ir.config_parameter'].sudo().get_param('toc_online.access_token')
+        company = self.company_id or self.env.company
+        if not company.toc_online_enabled:
+            return None
+        try:
+            access_token = self.env['toc.api'].get_access_token(company=company)
+        except UserError as e:
+            _logger.error("Failed to obtain TOConline access token: %s", e)
+            return None
         if not access_token:
-            _logger.error("Access token not found in system parameters.")
+            _logger.error("Access token not found for company %s.", company.name)
             return None
 
-        endpoint = f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_receipts/{receipt_id}"
+        endpoint = f"{company._get_toc_api_url()}/api/v1/commercial_sales_receipts/{receipt_id}"
 
         try:
             response = self.env['toc.api'].toc_request(

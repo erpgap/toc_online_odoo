@@ -32,9 +32,7 @@ class StockPicking(models.Model):
     def button_validate(self):
         res = super().button_validate()
         for picking in self:
-            company = picking.company_id
-            toc_enabled = company.toc_online_client_id and company.toc_online_client_secret
-            if picking.state == "done" and toc_enabled:
+            if picking.state == "done" and picking.company_id.toc_online_enabled:
                 if picking.picking_type_code == "outgoing":
                     picking._send_transport_doc_to_toconline(document_type="GR")
                 elif picking.picking_type_code == "internal":
@@ -102,7 +100,7 @@ class StockPicking(models.Model):
             exempt_reason_source_order = self.return_id.sale_id
 
         toc_api = self.env["toc.api"]
-        access_token = toc_api.get_access_token()
+        access_token = toc_api.get_access_token(company=self.company_id)
         if not access_token:
             raise UserError(_("Could not obtain TOConline access token."))
 
@@ -113,7 +111,7 @@ class StockPicking(models.Model):
                 continue
 
             product = move.product_id
-            product_id = self.env["account.move"].get_or_create_product_in_toconline(access_token, product)
+            product_id = self.env["account.move"].get_or_create_product_in_toconline(access_token, product, company=self.company_id)
 
             if is_internal:
                 unit_price = product.standard_price or product.list_price
@@ -156,7 +154,7 @@ class StockPicking(models.Model):
         tax_exemption_reason_id = None
         if exempt_reason_source_order and exempt_reason_source_order.l10npt_vat_exempt_reason:
             code = exempt_reason_source_order.l10npt_vat_exempt_reason.code
-            tax_exemption_reason_id = toc_api.get_tax_exemption_reason_id(access_token, code)
+            tax_exemption_reason_id = toc_api.get_tax_exemption_reason_id(access_token, code, company=self.company_id)
             if not tax_exemption_reason_id:
                 raise UserError(
                     _("Motivo de isenção '%s' não encontrado no TOConline.") % code

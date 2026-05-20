@@ -23,6 +23,9 @@ class CreditNoteSync(models.Model):
         company = self.env['res.company'].search([('toc_company_id', '=', toc_company_id)], limit=1)
         if not company:
             raise UserError(f"Company with TOConline ID {toc_company_id} not found in Odoo.")
+        if not company.toc_online_enabled:
+            _logger.info("TOConline disabled for company %s; skipping credit note sync.", company.name)
+            return False
 
         toc_document = self._get_toc_document_by_id(toc_document_id, company)
         if not toc_document:

@@ -11,7 +11,8 @@ class RepairOrder(models.Model):
 
     @api.constrains("move_ids", "l10npt_vat_exempt_reason")
     def _check_vat_exempt_reason(self):
-        for repair in self:
+        toc_repairs = self.filtered(lambda r: r.company_id.toc_online_enabled)
+        for repair in toc_repairs:
             has_zero_tax = False
 
             for move in repair.move_ids:
@@ -63,7 +64,7 @@ class RepairOrder(models.Model):
                 if zero_tax:
                     has_zero_tax = True
 
-            if has_zero_tax and not repair.l10npt_vat_exempt_reason:
+            if repair.company_id.toc_online_enabled and has_zero_tax and not repair.l10npt_vat_exempt_reason:
                 raise ValidationError(
                     _("Este reparo possui produtos com IVA 0%. Informe o motivo de isenção.")
                 )
@@ -114,18 +115,14 @@ class SaleOrder(models.Model):
 
     @api.constrains("order_line", "l10npt_vat_exempt_reason")
     def _check_vat_exempt_reason(self):
-        for order in self:
-            has_zero_tax = False
-
-            for line in order.order_line:
-                zero_tax = line.tax_id.filtered(
+        toc_orders = self.filtered(lambda o: o.company_id.toc_online_enabled)
+        for order in toc_orders:
+            has_zero_tax = any(
+                line.tax_id.filtered(
                     lambda t: round(t.amount, 2) == 0.0 and t.type_tax_use == "sale"
                 )
-
-                if zero_tax:
-                    has_zero_tax = True
-                    break
-
+                for line in order.order_line
+            )
             if has_zero_tax and not order.l10npt_vat_exempt_reason:
                 raise ValidationError(
                     _("Este pedido possui linhas com IVA 0%%. É obrigatório informar o motivo de isenção.")
@@ -144,9 +141,15 @@ class SaleOrder(models.Model):
 class SaleOrderLine(models.Model):
     _inherit = "sale.order.line"
 
-    @api.constrains("tax_id")
+    @api.constrains("tax_id", "state")
     def _check_tax_required(self):
-        for line in self:
+        product_lines = self.filtered(
+            lambda l: not l.display_type
+            and l.product_id
+            and l.order_id.company_id.toc_online_enabled
+            and l.order_id.state in ('sale', 'done')
+        )
+        for line in product_lines:
             if not line.tax_id:
                 raise ValidationError(
                     _("A linha '%s' precisa ter um imposto definido.")

@@ -6,8 +6,9 @@
         <field name="inherit_id" ref="base.view_company_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='name']" position="after">
-                <field name="toc_company_id"/>
-                <field name="toc_cash_account_id"/>
+                <field name="toc_online_enabled"/>
+                <field name="toc_company_id" invisible="not toc_online_enabled"/>
+                <field name="toc_cash_account_id" invisible="not toc_online_enabled"/>
             </xpath>
         </field>
     </record>

@@ -27,6 +27,10 @@ class InvoiceSync(models.Model):
             Professional synchronization of TOConline invoices into Odoo 18.
             Handles date chronology issues and prevents duplicate records.
             """
+            if not company.toc_online_enabled:
+                _logger.info("TOConline disabled for company %s; skipping invoice sync.", company.name)
+                return False
+
             toc_document_id = toc_document_data.get('id')
             document_no = toc_document_data.get('document_no')
             status = toc_document_data.get('status')
@@ -107,7 +111,7 @@ class InvoiceSync(models.Model):
 
                 # Validate against TOC allowed taxes
                 access_token = self.env['toc.api'].get_access_token(company=company)
-                taxes_data = self.env['account.move'].get_taxes_from_toconline(access_token)
+                taxes_data = self.env['account.move'].get_taxes_from_toconline(access_token, company=company)
 
                 valid_region_taxes = [
                     t for t in taxes_data

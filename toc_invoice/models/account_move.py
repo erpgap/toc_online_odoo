@@ -56,6 +56,8 @@ class AccountMove(models.Model):
     cancellation_reason = fields.Char(string="reason for invoice cancellation")
     cancellation_date = fields.Date(string="Date of cancellation")
 
+    toc_online_enabled = fields.Boolean(related='company_id.toc_online_enabled')
+
 
     def set_value_credit_note(self, aux):
         for record in self:
@@ -89,45 +91,53 @@ class AccountMove(models.Model):
 
     @api.constrains('invoice_line_ids')
     def _check_product_internal_reference(self):
-        for record in self:
-            for line in record.invoice_line_ids:
+        toc_moves = self.filtered(lambda m: m.toc_online_enabled and m.journal_id.send_to_toconline)
+        for record in toc_moves:
+            product_lines = record.invoice_line_ids.filtered(
+                lambda l: l.display_type == 'product' and not l.is_downpayment
+            )
+            for line in product_lines:
                 product = line.product_id
-                if product and not product.product_tmpl_id.default_code:
+                if product and not product.default_code:
                     raise ValidationError(
-                        f"The product '{product.name}' must have an internal reference (default_code) set."
+                        _("The product '%s' must have an internal reference (default_code) set.") % product.name
                     )
 
     @api.constrains('invoice_date', 'invoice_date_due')
     def _check_invoice_dates(self):
         today = date.today()
-        for record in self:
-            if record.toc_status != 'sent' and record.toc_status != 'cancelled':
-                if record.invoice_date and record.invoice_date < today:
-                    raise ValidationError("The invoice date must be today or a future date.")
-                if record.invoice_date_due and record.invoice_date_due < today:
-                    raise ValidationError("The due date must be today or a future date.")
+        toc_drafts = self.filtered(
+            lambda m: m.toc_online_enabled
+            and m.journal_id.send_to_toconline
+            and m.state == 'draft'
+            and m.toc_status not in ('sent', 'cancelled')
+        )
+        for record in toc_drafts:
+            if record.invoice_date and record.invoice_date < today:
+                raise ValidationError(_("The invoice date must be today or a future date."))
+            if record.invoice_date_due and record.invoice_date_due < today:
+                raise ValidationError(_("The due date must be today or a future date."))
 
     @api.model_create_multi
     def create(self, vals_list):
-        for vals in vals_list:
-            if vals.get('move_type') != 'out_refund' or vals.get('reversed_entry_id'):
+        records = super().create(vals_list)
+        for record in records:
+            if record.move_type != 'out_refund' or record.reversed_entry_id:
                 continue
-            journal_id = vals.get('journal_id')
-            if not journal_id:
-                continue
-            journal = self.env['account.journal'].browse(journal_id)
-            if journal.send_to_toconline:
+            if record.journal_id.send_to_toconline and record.toc_online_enabled:
                 raise UserError(_(
                     "Credit notes must be created from an existing invoice when TOConline is "
                     "enabled. Please open the original invoice and use the 'Credit Note' action."
                 ))
-        return super().create(vals_list)
+        return records
 
     @api.constrains('state')
     def _check_state_invoice(self):
-        for record in self:
-            if record.toc_status == 'cancelled' and record.state == 'draft':
-                raise ValidationError("The invoice has already been cancelled in TOConline and cannot be modified.")
+        cancelled_in_toc = self.filtered(
+            lambda m: m.toc_online_enabled and m.toc_status == 'cancelled' and m.state == 'draft'
+        )
+        if cancelled_in_toc:
+            raise ValidationError(_("The invoice has already been cancelled in TOConline and cannot be modified."))
 
     def get_base_url(self):
         return (self.company_id or self.env.company)._get_toc_api_url()
@@ -234,11 +244,12 @@ class AccountMove(models.Model):
 
         raise UserError(_(f"Document with number {document_no} not found in TOConline."))
 
-    def get_taxes_from_toconline(self, access_token):
+    def get_taxes_from_toconline(self, access_token, company=None):
         """
             Search for available VAT rates on TOConline.
         """
-        url = f"{self.env.company._get_toc_api_url()}/api/taxes"
+        company = company or self.company_id or self.env.company
+        url = f"{company._get_toc_api_url()}/api/taxes"
         response =  self.env['toc.api'].toc_request(
             method='GET',
             url=url,
@@ -299,16 +310,17 @@ class AccountMove(models.Model):
                 )
 
         date = self.invoice_date or fields.Date.today()
-        conversion_rate = currency_obj.with_context(date=date)._convert(1, euro_currency, self.env.company, date)
+        conversion_rate = currency_obj.with_context(date=date)._convert(1, euro_currency, self.company_id or self.env.company, date)
         if conversion_rate <= 0:
             raise UserError(f"Unable to get conversion rate for{invoice_currency}.")
         return conversion_rate
 
-    def get_or_create_customer_in_toconline(self, access_token, partner):
+    def get_or_create_customer_in_toconline(self, access_token, partner, company=None):
         """
         Verifica se o cliente já existe no TOConline pelo toc_online_id ou email (se NIF for 999999990 ou vazio).
         Caso não exista, cria-o.
         """
+        company = company or self.company_id or self.env.company
 
         if partner.toc_online_id:
             return partner.toc_online_id
@@ -320,7 +332,7 @@ class AccountMove(models.Model):
         customers = []
 
         if tax_number != "999999990" and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{self.env.company._get_toc_api_url()}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{company._get_toc_api_url()}/api/customers?filter[tax_registration_number]={tax_number}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -333,7 +345,7 @@ class AccountMove(models.Model):
                     return customers[0]["id"]
 
         if email:
-            search_url = f"{self.env.company._get_toc_api_url()}/api/customers?filter[email]={email}"
+            search_url = f"{company._get_toc_api_url()}/api/customers?filter[email]={email}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -345,7 +357,7 @@ class AccountMove(models.Model):
                     partner.sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
-        create_url = f"{self.env.company._get_toc_api_url()}/api/customers"
+        create_url = f"{company._get_toc_api_url()}/api/customers"
         customer_payload = {
             "data": {
                 "type": "customers",
@@ -381,12 +393,13 @@ class AccountMove(models.Model):
             error_msg = response.text
             raise UserError(_("Error creating customer in TOConline: %s") % error_msg)
 
-    def get_or_create_product_in_toconline(self, access_token, product):
+    def get_or_create_product_in_toconline(self, access_token, product, company=None):
+        company = company or self.company_id or self.env.company
 
         if not product.default_code:
             raise UserError(_("Product code (default_code) is empty."))
 
-        search_url = f"{self.env.company._get_toc_api_url()}/api/products?filter[item_code]={product.default_code}"
+        search_url = f"{company._get_toc_api_url()}/api/products?filter[item_code]={product.default_code}"
         response = self.env['toc.api'].toc_request(
             method='GET',
             url=search_url,
@@ -400,7 +413,7 @@ class AccountMove(models.Model):
 
         if product.list_price is None:
             raise UserError(_(f"The selling price (list_price) of the product {product.name} is empty."))
-        create_url = f"{self.env.company._get_toc_api_url()}/api/products"
+        create_url = f"{company._get_toc_api_url()}/api/products"
         product_payload = {
             "data": {
                 "type": "products",
@@ -431,17 +444,18 @@ class AccountMove(models.Model):
             raise UserError(_("Error creating product in TOConline: %s") % response.text)
 
     def action_post(self):
-        access_token = self.env['toc.api'].get_access_token()
-        for move in self:
-            if move.state == 'draft' and move.journal_id.send_to_toconline:
-                move._adjust_date_for_chronology(access_token)
+        toc_moves = self.filtered(
+            lambda m: m.state == 'draft' and m.toc_online_enabled and m.journal_id.send_to_toconline
+        )
+        for move in toc_moves:
+            access_token = self.env['toc.api'].get_access_token(company=move.company_id)
+            move._adjust_date_for_chronology(access_token)
 
         res = super().action_post()
-        for move in self:
-            if not move.journal_id.send_to_toconline:
-                continue
-            if not move.invoice_date:
-                continue
+        posted_toc_moves = self.filtered(
+            lambda m: m.toc_online_enabled and m.journal_id.send_to_toconline and m.invoice_date
+        )
+        for move in posted_toc_moves:
             previous_invoice = self.env['account.move'].search([
                 ('move_type', '=', move.move_type),
                 ('journal_id', '=', move.journal_id.id),
@@ -456,15 +470,14 @@ class AccountMove(models.Model):
                     "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
                 ) % ref)
 
-            if move.journal_id.send_to_toconline:
-                move.action_send_invoice_to_toconline()
-                move._handle_credit_note_posting()
-                if move.toc_status != 'sent' or move.checkbox != True:
-                    move.write({
-                        'toc_status': 'error',
-                    })
-                    raise UserError(
-                        _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
+            move.action_send_invoice_to_toconline()
+            move._handle_credit_note_posting()
+            if move.toc_status != 'sent' or move.checkbox != True:
+                move.write({
+                    'toc_status': 'error',
+                })
+                raise UserError(
+                    _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
         return res
 
     def action_send_invoice_to_toconline(self):
@@ -478,42 +491,47 @@ class AccountMove(models.Model):
                 ('move_type', '=', 'out_invoice'),
             ])
 
-        access_token = self.env['toc.api'].get_access_token()
-        if not access_token:
-            raise UserError(_("Could not get or refresh access token."))
+        if not invoices_to_send:
+            return
 
-        state_company = self.getStateCompany()
-        tax_region = {
-            "Madeira": "PT-MA",
-            "Açores": "PT-AC",
-            "Continente": "PT"
-        }.get(state_company, "PT")
+        invoices_by_company = {}
+        for inv in invoices_to_send.filtered(lambda m: m.toc_online_enabled and m.journal_id.send_to_toconline):
+            invoices_by_company.setdefault(inv.company_id, self.env['account.move'])
+            invoices_by_company[inv.company_id] |= inv
 
-        taxes_data = self.get_taxes_from_toconline(access_token)
-        filtered_taxes = [
-            tax for tax in taxes_data
-            if tax["attributes"]["tax_country_region"] == tax_region
-        ]
+        for company, invoices in invoices_by_company.items():
+            access_token = self.env['toc.api'].get_access_token(company=company)
 
-        for record in invoices_to_send:
-            with self.env.cr.savepoint():  # Savepoint por fatura
-                # record._adjust_date_for_chronology(access_token)
-                self._validate_partner_fields(record.partner_id, record)
-                customer_id = self.get_or_create_customer_in_toconline(access_token, record.partner_id)
-                lines, global_exemption_reason = self._build_lines(record, tax_region, filtered_taxes, access_token)
-                payload = self._build_payload(record, lines, global_exemption_reason, tax_region)
+            state_company = self.getStateCompany()
+            tax_region = {
+                "Madeira": "PT-MA",
+                "Açores": "PT-AC",
+                "Continente": "PT"
+            }.get(state_company, "PT")
 
-                response = self.env['toc.api'].toc_request(
-                    method='POST',
-                    url=f"{record.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents",
-                    payload=payload,
-                    access_token=access_token
-                )
+            taxes_data = self.get_taxes_from_toconline(access_token, company=company)
+            filtered_taxes = [
+                tax for tax in taxes_data
+                if tax["attributes"]["tax_country_region"] == tax_region
+            ]
 
-                self._handle_response(record, response)
-                for records in self:
-                    if records.toc_status == 'sent':
-                        records.checkbox = True
+            for record in invoices:
+                with self.env.cr.savepoint():
+                    self._validate_partner_fields(record.partner_id, record)
+                    customer_id = self.get_or_create_customer_in_toconline(access_token, record.partner_id, company=company)
+                    lines, global_exemption_reason = self._build_lines(record, tax_region, filtered_taxes, access_token)
+                    payload = self._build_payload(record, lines, global_exemption_reason, tax_region)
+
+                    response = self.env['toc.api'].toc_request(
+                        method='POST',
+                        url=f"{company._get_toc_api_url()}/api/v1/commercial_sales_documents",
+                        payload=payload,
+                        access_token=access_token
+                    )
+
+                    self._handle_response(record, response)
+                    if record.toc_status == 'sent':
+                        record.checkbox = True
                         response_data = response.json()
                         public_link = response_data.get("public_link")
                         if public_link:
@@ -553,7 +571,7 @@ class AccountMove(models.Model):
         global_exemption_reason = None
 
         for line in record.invoice_line_ids:
-            product_id = self.get_or_create_product_in_toconline(access_token, line.product_id)
+            product_id = self.get_or_create_product_in_toconline(access_token, line.product_id, company=record.company_id)
             tax_percentage = sum(t.amount for t in line.tax_ids) if line.tax_ids else 0
             tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
 
@@ -675,7 +693,7 @@ class AccountMove(models.Model):
 
             toc_company_id = data.get('company_id')
             if toc_company_id:
-                self.env.company.toc_company_id = toc_company_id
+                record.company_id.sudo().toc_company_id = toc_company_id
 
     def action_cancel_invoice_toconline(self):
         """
@@ -696,7 +714,7 @@ class AccountMove(models.Model):
                     "You cannot cancel this invoice (%s) because a more recent invoice (%s) already exists and has been posted or cancelled."
                 ) % (record.display_name, newer_invoice.display_name))
 
-            if record.journal_id.send_to_toconline:
+            if record.toc_online_enabled and record.journal_id.send_to_toconline:
                 if not record.toc_document_id:
                     raise UserError(_("This invoice was not sent to TOConline or is missing the TOConline document ID."))
 
@@ -707,7 +725,7 @@ class AccountMove(models.Model):
                 if not reason:
                     raise UserError(_("You must provide a reason to cancel the invoice."))
 
-                access_token = self.env['toc.api'].get_access_token()
+                access_token = self.env['toc.api'].get_access_token(company=record.company_id)
                 if not access_token:
                     raise UserError(_("Could not obtain access token for TOConline."))
 
@@ -774,13 +792,14 @@ class AccountMove(models.Model):
             else:
                 record.state = 'cancel'
 
-    def get_customer_id(self, access_token, tax_number=None, email=None):
+    def get_customer_id(self, access_token, tax_number=None, email=None, company=None):
         """
             Search for a customer ID in TOConline by NIF or email.
         """
+        company = company or self.company_id or self.env.company
         customers = []
         if tax_number and tax_number.isdigit() and len(tax_number) == 9:
-            search_url = f"{self.env.company._get_toc_api_url()}/api/customers?filter[tax_registration_number]={tax_number}"
+            search_url = f"{company._get_toc_api_url()}/api/customers?filter[tax_registration_number]={tax_number}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -789,7 +808,7 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
         if not customers and email:
-            search_url = f"{self.env.company._get_toc_api_url()}/api/customers?filter[email]={email}"
+            search_url = f"{company._get_toc_api_url()}/api/customers?filter[email]={email}"
             response = self.env['toc.api'].toc_request(
                 method='GET',
                 url=search_url,
@@ -826,8 +845,9 @@ class AccountMove(models.Model):
             'context': {'default_cancel_reason': '', 'active_id': self.id},
         }
 
-    def _is_saft_exported(self, document_id, access_token):
-        url = f"{self.env.company._get_toc_api_url()}/api/commercial_sales_documents/{document_id}"
+    def _is_saft_exported(self, document_id, access_token, company=None):
+        company = company or self.company_id or self.env.company
+        url = f"{company._get_toc_api_url()}/api/commercial_sales_documents/{document_id}"
         response = self.env['toc.api'].toc_request(
             method='GET',
             url=url,
@@ -846,11 +866,14 @@ class AccountMove(models.Model):
     def _handle_credit_note_posting(self):
         for move in self:
             if move.move_type == 'out_refund' and move.reversed_entry_id:
-                if move.journal_id.send_to_toconline:
+                if move.toc_online_enabled and move.journal_id.send_to_toconline:
                     move._send_credit_note_to_toconline()
 
     def _send_credit_note_to_toconline(self):
         self.ensure_one()
+
+        if not self.toc_online_enabled:
+            return
 
         exemption_reason= None
 
@@ -860,7 +883,7 @@ class AccountMove(models.Model):
         if self.toc_status_credit_note == 'sent':
             raise UserError(_("The credit note has already been sent to TOConline."))
 
-        access_token = self.env['toc.api'].get_access_token()
+        access_token = self.env['toc.api'].get_access_token(company=self.company_id)
         if not access_token:
             raise UserError(_("TOConline access token not found."))
 
@@ -877,7 +900,7 @@ class AccountMove(models.Model):
         region_map = {"Madeira": "PT-MA", "Açores": "PT-AC", "Continente": "PT"}
         tax_region = region_map.get(tax_region, "PT")
 
-        taxes_data = self.get_taxes_from_toconline(access_token)
+        taxes_data = self.get_taxes_from_toconline(access_token, company=self.company_id)
         filtered_taxes = [
             tax for tax in taxes_data
             if tax["attributes"]["tax_country_region"] == tax_region
