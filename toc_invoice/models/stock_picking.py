@@ -23,6 +23,9 @@ class StockPicking(models.Model):
     toc_document_id = fields.Char("TOConline Document ID", copy=False)
     toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
     toc_communication_code = fields.Char("AT Communication Code", copy=False)
+    use_license_plate = fields.Boolean(string="Use License Plate")
+    vehicle_id = fields.Many2one("fleet.vehicle", string="Vehicle")
+    toc_online_enabled = fields.Boolean(related="company_id.toc_online_enabled")
 
 
     # =====================================================
@@ -241,6 +244,8 @@ class StockPicking(models.Model):
             "tax_exemption_reason_id": tax_exemption_reason_id,
             "lines": lines,
         }
+        if self.use_license_plate and self.vehicle_id.license_plate:
+            payload["vehicle_registration"] = self.vehicle_id.license_plate
         if parent_document_reference:
             payload["parent_document_reference"] = parent_document_reference
         return payload

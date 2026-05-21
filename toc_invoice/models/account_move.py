@@ -322,8 +322,8 @@ class AccountMove(models.Model):
         """
         company = company or self.company_id or self.env.company
 
-        if partner.toc_online_id:
-            return partner.toc_online_id
+        if partner.with_company(company).toc_online_id:
+            return partner.with_company(company).toc_online_id
 
         tax_number = partner.vat.replace(" ", "").strip() if partner.vat else "999999990"
         if len(tax_number) > 2 and tax_number[:2].isalpha():
@@ -341,7 +341,7 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    partner.sudo().write({'toc_online_id': customers[0]["id"]})
+                    partner.with_company(company).sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
         if email:
@@ -354,7 +354,7 @@ class AccountMove(models.Model):
             if response.status_code == 200:
                 customers = response.json().get('data', [])
                 if customers:
-                    partner.sudo().write({'toc_online_id': customers[0]["id"]})
+                    partner.with_company(company).sudo().write({'toc_online_id': customers[0]["id"]})
                     return customers[0]["id"]
 
         create_url = f"{company._get_toc_api_url()}/api/customers"
@@ -387,7 +387,7 @@ class AccountMove(models.Model):
 
         if response.status_code in (200, 201):
             customer_id = response.json()["data"]["id"]
-            partner.sudo().write({'toc_online_id': customer_id})
+            partner.with_company(company).sudo().write({'toc_online_id': customer_id})
             return customer_id
         else:
             error_msg = response.text

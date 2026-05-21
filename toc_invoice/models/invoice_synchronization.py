@@ -64,7 +64,7 @@ class InvoiceSync(models.Model):
 
             # --- 2. PARTNER HANDLING ---
             toc_client_id = toc_document.get('customer_id')
-            partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
+            partner = self.env['res.partner'].with_company(company).search([('toc_online_id', '=', toc_client_id)], limit=1)
             if not partner:
                 partner_vals = {
                     'name': toc_document.get('customer_business_name') or 'Cliente TOC',
@@ -77,7 +77,7 @@ class InvoiceSync(models.Model):
                         [('code', '=', toc_document.get('customer_country', 'PT'))], limit=1).id,
                     'customer_rank': 1,
                 }
-                partner = self.env['res.partner'].sudo().create(partner_vals)
+                partner = self.env['res.partner'].with_company(company).sudo().create(partner_vals)
                 _logger.info("New partner created from TOC invoice %s: %s", document_no, toc_client_id)
 
             # Switch context to company and sudo for record creation

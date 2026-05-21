@@ -35,7 +35,7 @@ class CreditNoteSync(models.Model):
             raise UserError(f"Unexpected format for TOConline document: {type(toc_document)}")
 
         toc_client_id = toc_document.get('customer_id')
-        partner = self.env['res.partner'].search([('toc_online_id', '=', toc_client_id)], limit=1)
+        partner = self.env['res.partner'].with_company(company).search([('toc_online_id', '=', toc_client_id)], limit=1)
         if not partner:
             raise UserError(f"Customer with TOConline ID {toc_client_id} not found in Odoo.")
 

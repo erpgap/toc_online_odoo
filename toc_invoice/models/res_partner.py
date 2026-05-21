@@ -4,12 +4,14 @@ from odoo.exceptions import UserError
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
-    toc_online_id = fields.Char(string="TOConline ID", help="Customer ID in TOConline.")
+    toc_online_id = fields.Char(
+        string="TOConline ID",
+        help="Customer ID in TOConline.",
+        company_dependent=True,
+    )
 
     def write(self, vals):
         result = super().write(vals)
-
-        # Avoids unnecessary calls in case of bulk creation or when there are no relevant changes.
 
         fields_to_check = {
             'name',
@@ -22,25 +24,29 @@ class ResPartner(models.Model):
         }
 
         if any(field in vals for field in fields_to_check):
+            toc_companies = self.env['res.company'].sudo().search([
+                ('toc_online_enabled', '=', True),
+            ])
             for partner in self:
-                if partner.toc_online_id:
-                    partner.update_customer_in_toconline()
+                for company in toc_companies:
+                    if partner.with_company(company).toc_online_id:
+                        partner.update_customer_in_toconline(company=company)
 
         return result
 
-    def update_customer_in_toconline(self):
+    def update_customer_in_toconline(self, company=None):
         """
         Updates the customer's data on TOConline if a toc_online_id is present.
         """
         self.ensure_one()
 
-        company = self.env.company
+        company = company or self.env.company
         if not company.toc_online_enabled:
             return
 
         access_token = self.env['toc.api'].get_access_token(company=company)
 
-        customer_id = self.toc_online_id
+        customer_id = self.with_company(company).toc_online_id
         update_url = f"{company._get_toc_api_url()}/api/customers/{customer_id}"
 
         tax_number = self.vat.replace(" ", "").strip() if self.vat else "999999990"
