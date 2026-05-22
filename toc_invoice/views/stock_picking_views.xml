@@ -1,0 +1,13 @@
+<odoo>
+    <record id="view_picking_form_toc_vehicle" model="ir.ui.view">
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <group name="other_infos" position="inside">
+                <field name="toc_online_enabled" invisible="1"/>
+                <field name="use_license_plate" invisible="not toc_online_enabled"/>
+                <field name="vehicle_id" invisible="not use_license_plate"/>
+            </group>
+        </field>
+    </record>
+</odoo>
