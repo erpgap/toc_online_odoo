@@ -354,7 +354,7 @@ class TocOnlineService:
             raise UserError(_("Error creating customer in TOConline: %s") % response.text)
 
     def update_customer(self, partner):
-        customer_id = partner.with_company(self.company).toc_online_id
+        customer_id = partner.sudo().with_company(self.company).toc_online_id
         if not customer_id:
             return
 

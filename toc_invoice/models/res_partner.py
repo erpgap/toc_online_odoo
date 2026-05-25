@@ -32,8 +32,8 @@ class ResPartner(models.Model):
             ])
             for partner in self:
                 for company in toc_companies:
-                    if partner.with_company(company).toc_online_id:
-                        partner.update_customer_in_toconline(company=company)
+                    if partner.sudo().with_company(company).toc_online_id:
+                        partner.sudo().update_customer_in_toconline(company=company)
 
         return result
 
