@@ -29,8 +29,8 @@ class ResPartner(models.Model):
             ])
             for partner in self:
                 for company in toc_companies:
-                    if partner.with_company(company).toc_online_id:
-                        partner.update_customer_in_toconline(company=company)
+                    if partner.sudo().with_company(company).toc_online_id:
+                        partner.sudo().update_customer_in_toconline(company=company)
 
         return result
 
@@ -46,7 +46,7 @@ class ResPartner(models.Model):
 
         access_token = self.env['toc.api'].get_access_token(company=company)
 
-        customer_id = self.with_company(company).toc_online_id
+        customer_id = self.sudo().with_company(company).toc_online_id
         update_url = f"{company._get_toc_api_url()}/api/customers/{customer_id}"
 
         tax_number = self.vat.replace(" ", "").strip() if self.vat else "999999990"
