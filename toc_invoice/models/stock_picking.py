@@ -210,7 +210,7 @@ class StockPicking(models.Model):
 
         payload = {
             # ADDED: If internal, send as GT (Guia de Transporte), otherwise GR (Guia de Remessa)
-            "document_type": "GT" if is_internal else "GR",
+            "document_type": document_type,
             "date": doc_date.strftime("%Y-%m-%d"),
             "external_reference": self.name,
 
@@ -244,6 +244,8 @@ class StockPicking(models.Model):
         }
         if self.use_license_plate and self.vehicle_id and self.vehicle_id.license_plate:
             payload["vehicle_registration"] = self.vehicle_id.license_plate
+        if parent_document_reference:
+            payload["parent_document_reference"] = parent_document_reference
         return payload
 
     def _send_delivery_to_toconline(self, document_type=None):
