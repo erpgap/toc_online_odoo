@@ -42,12 +42,12 @@ class StockPicking(models.Model):
                 picking._send_transport_doc_to_toconline(document_type="GR")
             elif picking._is_delivery_return():
                 picking._send_transport_doc_to_toconline(
-                    document_type=TOC_RETURN_DOC_TYPE,
+                    document_type="GD",
                 )
             company = picking.company_id
             # ADDED: 'internal' to the types that trigger the dispatch
             if picking.picking_type_code == "internal" and picking.state == "done" and company.toc_online_enabled:
-                picking._send_delivery_to_toconline()
+                picking._send_delivery_to_toconline(document_type="GT")
         return res
 
     def _send_transport_doc_to_toconline(self, document_type="GR"):
@@ -246,7 +246,7 @@ class StockPicking(models.Model):
             payload["vehicle_registration"] = self.vehicle_id.license_plate
         return payload
 
-    def _send_delivery_to_toconline(self):
+    def _send_delivery_to_toconline(self, document_type=None):
         self.ensure_one()
 
         if self.toc_status == "sent":
@@ -260,14 +260,6 @@ class StockPicking(models.Model):
             raise UserError(_("Delivery has no customer."))
 
         parent_document_reference = None
-        if document_type == "GD":
-            if not self.return_id or not self.return_id.toc_document_no:
-                raise UserError(_(
-                    "The original delivery must have been sent to TOConline "
-                    "before its return can be registered."
-                ))
-            parent_document_reference = self.return_id.toc_document_no
-
         service = TocOnlineService(self.company_id, self.env)
 
         lines = []
@@ -278,6 +270,14 @@ class StockPicking(models.Model):
 
             product = move.product_id
             product_id = service.get_or_create_product(product)
+            unit_price = product.standard_price or product.list_price
+            tax = product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
+
+            tax_code = "ISE"
+            tax_percentage = 0.0
+            if tax:
+                tax_percentage = round(tax.amount or 0.0, 2)
+                tax_code = {23: "NOR", 13: "INT", 6: "RED", 0: "ISE"}.get(tax_percentage, "NOR")
 
             line_dict = {
                 "item_type": "Product",
@@ -289,7 +289,7 @@ class StockPicking(models.Model):
                 "unit_price": unit_price,
                 "tax_code": tax_code,
                 "tax_percentage": tax_percentage,
-                "tax_country_region": tax_region,
+                "tax_country_region": "PT",
             }
 
             lines.append(line_dict)
