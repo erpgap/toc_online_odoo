@@ -1,6 +1,8 @@
 import logging
 import pytz
 
+from markupsafe import Markup
+
 from odoo import models, fields, api, _
 from odoo.exceptions import UserError, ValidationError
 
@@ -29,6 +31,30 @@ class StockPicking(models.Model):
     toc_communication_code = fields.Char("AT Communication Code", copy=False)
     use_license_plate = fields.Boolean(string='User License Plate')
     vehicle_id = fields.Many2one('fleet.vehicle', string='Vehicle')
+
+    def _log_toc_transmission(self, request_type, success, error_message=''):
+        self.ensure_one()
+        type_labels = {
+            'GR': _('Guia de Remessa Send'),
+            'GD': _('Guia de Devolução Send'),
+            'GT': _('Guia de Transporte Send'),
+        }
+        type_label = type_labels.get(request_type, request_type)
+        status_label = _('Success') if success else _('Error')
+        doc_ref = (self.toc_document_no if success else None) or self.name or '/'
+        body = Markup("<b>%s</b><ul><li>%s: %s</li><li>%s: %s</li><li>%s: %s</li>") % (
+            _("TOConline communication"),
+            _("Type"), type_label,
+            _("Document"), doc_ref,
+            _("Status"), status_label,
+        )
+        if error_message:
+            body += Markup("<li>%s: %s</li>") % (_("Error"), error_message)
+        body += Markup("</ul>")
+        with self.env.registry.cursor() as audit_cr:
+            audit_env = api.Environment(audit_cr, self.env.uid, self.env.context)
+            audit_env['stock.picking'].browse(self.id).message_post(body=body)
+
     # =====================================================
     # SEND GR / GT (Waybills)
     # =====================================================
@@ -55,6 +81,9 @@ class StockPicking(models.Model):
 
         if self.toc_status == "sent":
             return
+
+        if not self.name:
+            raise UserError(_("Cannot send to TOConline: picking reference (external_reference) is not set."))
 
         if not self.partner_id:
             raise UserError(_("Picking has no partner."))
@@ -101,10 +130,17 @@ class StockPicking(models.Model):
             parent_document_reference=parent_document_reference,
         )
 
-        response = service.send_document(payload)
+        try:
+            response = service.send_document(payload)
+        except Exception as e:
+            self.toc_status = "error"
+            self._log_toc_transmission(document_type, success=False, error_message=str(e))
+            raise
 
         if response.status_code not in (200, 201):
             self.toc_status = "error"
+            err = response.text or 'HTTP %s' % response.status_code
+            self._log_toc_transmission(document_type, success=False, error_message=err)
             raise UserError(_("Error sending to TOConline: %s") % response.text)
 
         data = response.json()
@@ -114,6 +150,7 @@ class StockPicking(models.Model):
             "toc_document_no": data.get("document_no"),
             "toc_document_id": data.get("id"),
         })
+        self._log_toc_transmission(document_type, success=True)
 
         if self.toc_document_id:
             self._download_and_attach_toc_pdf(service, document_type=document_type)
@@ -254,6 +291,9 @@ class StockPicking(models.Model):
         if self.toc_status == "sent":
             return
 
+        if not self.name:
+            raise UserError(_("Cannot send to TOConline: picking reference (external_reference) is not set."))
+
         is_internal = self.picking_type_code == "internal"
 
         # Allow internal movements without a strict partner_id (uses the company),
@@ -301,10 +341,18 @@ class StockPicking(models.Model):
 
         payload = self._prepare_gr_payload(service, lines, document_type=document_type,
                                            parent_document_reference=parent_document_reference)
-        response = service.send_document(payload)
+
+        try:
+            response = service.send_document(payload)
+        except Exception as e:
+            self.toc_status = "error"
+            self._log_toc_transmission(document_type, success=False, error_message=str(e))
+            raise
 
         if response.status_code not in (200, 201):
             self.toc_status = "error"
+            err = response.text or 'HTTP %s' % response.status_code
+            self._log_toc_transmission(document_type, success=False, error_message=err)
             raise UserError(_("Error sending to TOConline: %s") % response.text)
 
         data = response.json()
@@ -314,6 +362,7 @@ class StockPicking(models.Model):
             "toc_document_no": data.get("document_no"),
             "toc_document_id": data.get("id"),
         })
+        self._log_toc_transmission(document_type, success=True)
 
         if self.toc_document_id:
             self._download_and_attach_toc_pdf(service, document_type=document_type)

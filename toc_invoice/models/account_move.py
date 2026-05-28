@@ -172,6 +172,33 @@ class AccountMove(models.Model):
             raise UserError(_("Unable to get conversion rate for %s.") % invoice_currency)
         return conversion_rate
 
+    def _log_toc_transmission(self, request_type, success, error_message=''):
+        self.ensure_one()
+        type_labels = {
+            'invoice': _('Invoice Send'),
+            'credit_note': _('Credit Note Send'),
+            'cancel': _('Cancellation'),
+        }
+        type_label = type_labels.get(request_type, request_type)
+        status_label = _('Success') if success else _('Error')
+        toc_doc_no = self.toc_document_no_credit_note if request_type == 'credit_note' else self.toc_document_no
+        doc_ref = (toc_doc_no if success else None) or self.name or self.ref or '/'
+        body = Markup("<b>%s</b><ul><li>%s: %s</li><li>%s: %s</li><li>%s: %s</li>") % (
+            _("TOConline communication"),
+            _("Type"), type_label,
+            _("Document"), doc_ref,
+            _("Status"), status_label,
+        )
+        if error_message:
+            body += Markup("<li>%s: %s</li>") % (_("Error"), error_message)
+        body += Markup("</ul>")
+        # Write through a separate cursor so the audit row commits independently
+        # of the caller's transaction and does NOT release any savepoint that
+        # may be open on self.env.cr (e.g. inside action_send_invoice_to_toconline).
+        with self.env.registry.cursor() as audit_cr:
+            audit_env = api.Environment(audit_cr, self.env.uid, self.env.context)
+            audit_env['account.move'].browse(self.id).message_post(body=body)
+
     def action_post(self):
         toc_moves = self.filtered(
             lambda m: m.state == 'draft' and m.company_id.toc_online_enabled and m.journal_id.send_to_toconline
@@ -181,7 +208,7 @@ class AccountMove(models.Model):
             move._adjust_date_for_chronology(service)
 
         res = super().action_post()
-        for move in self:
+        for move in self.filtered(lambda rec:rec.state == 'posted'):
             if not (move.company_id.toc_online_enabled and move.journal_id.send_to_toconline):
                 continue
             if not move.invoice_date:
@@ -249,10 +276,15 @@ class AccountMove(models.Model):
                     )
                     payload = self._build_payload(record, lines, global_exemption_reason, tax_region)
 
-                    response = service.send_document(payload)
+                    try:
+                        response = service.send_document(payload)
+                    except Exception as e:
+                        record._log_toc_transmission('invoice', success=False, error_message=str(e))
+                        raise
 
                     self._handle_response(record, response)
                     if record.toc_status == 'sent':
+                        record._log_toc_transmission('invoice', success=True)
                         record.checkbox = True
                         response_data = response.json()
                         public_link = response_data.get("public_link")
@@ -270,6 +302,9 @@ class AccountMove(models.Model):
                                 record, toc_document_id, f"Fatura_{record.name}.pdf",
                                 message=_("PDF successfully downloaded and attached to the invoice."),
                             )
+                    else:
+                        err = getattr(response, 'text', None) or 'HTTP %s' % getattr(response, 'status_code', '?')
+                        record._log_toc_transmission('invoice', success=False, error_message=err)
 
     def _validate_partner_fields(self, partner, invoice):
         missing_fields = []
@@ -392,6 +427,7 @@ class AccountMove(models.Model):
             "notes": html2plaintext(record.narration or "")[:400],
             "tax_exemption_reason_id": exemption_reason,
             "lines": lines,
+            "external_reference": record.name,
         }
 
     def _handle_response(self, record, response):
@@ -445,13 +481,22 @@ class AccountMove(models.Model):
             if not reason:
                 raise UserError(_("You must provide a reason to cancel the invoice."))
 
-            response = service.cancel_document(record.toc_document_id, reason)
+            try:
+                response = service.cancel_document(record.toc_document_id, reason)
+            except Exception as e:
+                record._log_toc_transmission('cancel', success=False, error_message=str(e))
+                raise
 
             if response.status_code != 200:
+                record._log_toc_transmission(
+                    'cancel', success=False,
+                    error_message='HTTP %s: %s' % (response.status_code, response.text),
+                )
                 raise UserError(
                     _("Failed to cancel invoice on TOConline. Status: %s, Response: %s")
                     % (response.status_code, response.text)
                 )
+            record._log_toc_transmission('cancel', success=True)
             response_data = response.json()
 
             attributes = response_data.get('data', {}).get('attributes', {})
@@ -638,11 +683,20 @@ class AccountMove(models.Model):
             "notes": f"Credit note relating to the invoice: {document_no}",
             "tax_exemption_reason_id":  global_exemption_reason ,
             "lines": lines,
+            "external_reference": self.name,
         }
 
-        response = service.send_document(payload)
+        try:
+            response = service.send_document(payload)
+        except Exception as e:
+            self._log_toc_transmission('credit_note', success=False, error_message=str(e))
+            raise
 
         if response.status_code != 200:
+            self._log_toc_transmission(
+                'credit_note', success=False,
+                error_message='HTTP %s: %s' % (response.status_code, response.text),
+            )
             raise UserError(_("Error sending credit note: %s") % response.text)
 
         response_data = response.json()
@@ -653,6 +707,7 @@ class AccountMove(models.Model):
         })
 
         self.env.cr.commit()
+        self._log_toc_transmission('credit_note', success=True)
 
         for records in self:
             if records.toc_status == 'sent':
