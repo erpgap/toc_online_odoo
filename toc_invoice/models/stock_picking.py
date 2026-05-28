@@ -392,3 +392,26 @@ class StockPicking(models.Model):
         self.write({"toc_pdf_attached": True})
 
         _logger.info("%s PDF attached to picking %s", document_type, self.name)
+
+    @api.model
+    def cron_retry_toc_pickings(self, batch_size=50):
+        commit_progress = self.env['ir.cron']._commit_progress
+
+        pending = self.env['stock.picking'].search([
+            ('state', '=', 'done'),
+            ('toc_status', 'in', ('draft', 'error')),
+            ('company_id.toc_online_enabled', '=', True),
+        ], limit=batch_size)
+        commit_progress(remaining=len(pending))
+        for picking in pending:
+            try:
+                if picking.picking_type_code == 'outgoing':
+                    picking._send_transport_doc_to_toconline(document_type='GR')
+                elif picking._is_delivery_return():
+                    picking._send_transport_doc_to_toconline(document_type='GD')
+                elif picking.picking_type_code == 'internal':
+                    picking._send_delivery_to_toconline(document_type='GT')
+                commit_progress(1)
+            except Exception as e:
+                _logger.error("TOConline cron picking retry failed for %s: %s", picking.name, e)
+                self.env.cr.rollback()

@@ -795,3 +795,40 @@ class AccountMove(models.Model):
             }
         else:
             return self.env.ref('account.account_invoices').report_action(self)
+
+    @api.model
+    def cron_retry_toc_invoices(self, batch_size=50):
+        commit_progress = self.env['ir.cron']._commit_progress
+
+        pending_invoices = self.env['account.move'].search([
+            ('state', '=', 'posted'),
+            ('move_type', '=', 'out_invoice'),
+            ('toc_status', 'in', ('draft', 'error')),
+            ('company_id.toc_online_enabled', '=', True),
+            ('journal_id.send_to_toconline', '=', True),
+        ], limit=batch_size)
+        commit_progress(remaining=len(pending_invoices))
+        for move in pending_invoices:
+            try:
+                move.action_send_invoice_to_toconline()
+                commit_progress(1)
+            except Exception as e:
+                _logger.error("TOConline cron invoice retry failed for %s: %s", move.name, e)
+                self.env.cr.rollback()
+
+        pending_cn = self.env['account.move'].search([
+            ('state', '=', 'posted'),
+            ('move_type', '=', 'out_refund'),
+            ('toc_status_credit_note', 'in', ('draft', 'error')),
+            ('reversed_entry_id.toc_document_no', '!=', False),
+            ('company_id.toc_online_enabled', '=', True),
+            ('journal_id.send_to_toconline', '=', True),
+        ], limit=batch_size)
+        commit_progress(remaining=len(pending_cn))
+        for move in pending_cn:
+            try:
+                move._send_credit_note_to_toconline()
+                commit_progress(1)
+            except Exception as e:
+                _logger.error("TOConline cron credit note retry failed for %s: %s", move.name, e)
+                self.env.cr.rollback()
