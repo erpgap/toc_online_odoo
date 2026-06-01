@@ -7,11 +7,6 @@
             <xpath expr="//field[@name='name']" position="after">
                 <field name="toc_display_number"/>
             </xpath>
-            <xpath expr="//field[@name='invoice_partner_display_name']" position="attributes">
-                <attribute name="column_invisible">context.get('default_move_type') not in ('out_invoice', 'out_refund',
-                    'out_receipt')
-                </attribute>
-            </xpath>
         </field>
     </record>
 
