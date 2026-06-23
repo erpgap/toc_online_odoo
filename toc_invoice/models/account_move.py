@@ -37,6 +37,7 @@ class AccountMove(models.Model):
     toc_document_no = fields.Char(string="TOConline Document Number")
     toc_document_id = fields.Char(string="TOConline Document Number")
     toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
+    toc_communication_code = fields.Char(string="AT Communication Code", copy=False)
 
     toc_display_number = fields.Char(string="TOConline Number. (Visualization)", compute="_compute_toc_display_number", store=True)
 
@@ -302,6 +303,7 @@ class AccountMove(models.Model):
                                 record, toc_document_id, f"Fatura_{record.name}.pdf",
                                 message=_("PDF successfully downloaded and attached to the invoice."),
                             )
+                            service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
                     else:
                         err = getattr(response, 'text', None) or 'HTTP %s' % getattr(response, 'status_code', '?')
                         record._log_toc_transmission('invoice', success=False, error_message=err)
@@ -525,6 +527,7 @@ class AccountMove(models.Model):
                         record, toc_document_id, f"Fatura_{record.name}.pdf",
                         message=_("PDF successfully downloaded and attached to the invoice."),
                     )
+                    service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
 
             except Exception as e:
                     raise UserError(_(
@@ -727,6 +730,7 @@ class AccountMove(models.Model):
                         records, toc_document_id, f"Fatura_{records.name}.pdf",
                         message=_("PDF successfully downloaded and attached to the invoice."),
                     )
+                    service.communicate_to_at(records, toc_document_id, "NC")
 
     def action_send_invoice_with_attachment(self):
         self.ensure_one()

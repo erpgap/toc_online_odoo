@@ -154,6 +154,7 @@ class StockPicking(models.Model):
 
         if self.toc_document_id:
             self._download_and_attach_toc_pdf(service, document_type=document_type)
+            service.communicate_to_at(self, self.toc_document_id, document_type)
 
     def _is_delivery_return(self):
         self.ensure_one()
@@ -366,14 +367,7 @@ class StockPicking(models.Model):
 
         if self.toc_document_id:
             self._download_and_attach_toc_pdf(service, document_type=document_type)
-
-
-    def _communicate_to_at(self, service, toc_doc_id):
-        at_data = service.communicate_to_at(toc_doc_id)
-        if at_data:
-            self.toc_communication_code = at_data.get("communication_code")
-            self.message_post(body=_("AT Communication Code: %s") % self.toc_communication_code)
-
+            service.communicate_to_at(self, self.toc_document_id, document_type)
 
     def _download_and_attach_toc_pdf(self, service, document_type):
         self.ensure_one()

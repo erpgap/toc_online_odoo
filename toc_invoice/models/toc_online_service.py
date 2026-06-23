@@ -689,24 +689,37 @@ class TocOnlineService:
     # J. AT communication
     # -----------------------------------------------------------------
 
-    def communicate_to_at(self, document_id):
-        at_user = self.company.toc_at_user
+    def communicate_to_at(self, record, document_id, document_type):
+        at_user = self.company.toc_at_username
         at_pass = self.company.toc_at_password
 
         if not at_user or not at_pass:
-            _logger.warning("AT credentials missing, skipping communication")
-            return None
+            record.message_post(body=_("AT credentials missing, skipping communication"))
+            return True
 
         payload_at = {
             "data": {
                 "type": "send_document_at_webservice",
                 "id": document_id,
-                "attributes": {},
+                "attributes": {
+                    "document_type": document_type,
+                    "entity_username": at_user,
+                    "entity_password": base64.b64encode(at_pass.encode("utf-8")).decode("utf-8"),
+                },
             }
         }
-        response = self._send_request(
-            'POST', "/api/send_document_at_webservice", payload=payload_at,
-        )
-        if response.status_code == 200:
-            return response.json().get("data", {}).get("attributes", {})
-        return None
+        try:
+            response = self._send_request(
+                'POST', "/api/send_document_at_webservice", payload=payload_at,
+            )
+            if response.status_code == 200:
+                at_data = response.json().get("data", {}).get("attributes", {})
+                communication_code = at_data.get("communication_code")
+                record.toc_communication_code = communication_code
+                record.message_post(body=_("AT Communication Code: %s") % communication_code)
+                return True
+            else:
+                record.message_post(body=_("AT communication fail: %s") % response.status_code)
+        except Exception as e:
+            record.message_post(body=_("AT communication fail: %s") % e)
+        return True

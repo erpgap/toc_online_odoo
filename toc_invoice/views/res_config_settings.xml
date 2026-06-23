@@ -14,6 +14,7 @@
                             help="Enable to send invoices and pickings to TOC Online">
                             <field name="toc_online_enabled"/>
                         </setting>
+                        <setting></setting>
                         <setting string="TOConline Client ID"
                             invisible="not toc_online_enabled">
                             <field name="toc_online_client_id" style="width:100% !important;"/>
@@ -34,17 +35,25 @@
                                 placeholder="e.g. https://api11.toconline.pt"
                                 style="width:100% !important;"/>
                         </setting>
-                        <setting string="TOConline Company ID"
-                                invisible="not toc_online_enabled or not toc_company_id">
-                            <field name="toc_company_id"
-                                readonly="1"
-                                groups="base.group_system"/>
+                        <setting string="AT Username"
+                            invisible="not toc_online_enabled">
+                            <field name="toc_at_username" style="width:100% !important;"/>
                         </setting>
                         <setting string="Redirect URI"
                             invisible="not toc_online_enabled">
                             <field name="toc_redirect_uri"
                                 placeholder="e.g. https://oauth.pstmn.io/v1/callback"
                                 style="width:100% !important;"/>
+                        </setting>
+                        <setting string="AT Password"
+                            invisible="not toc_online_enabled">
+                            <field name="toc_at_password" password="True" style="width:100% !important;"/>
+                        </setting>
+                        <setting string="TOConline Company ID"
+                                invisible="not toc_online_enabled or not toc_company_id">
+                            <field name="toc_company_id"
+                                readonly="1"
+                                groups="base.group_system"/>
                         </setting>
                     </block>
                 </xpath>

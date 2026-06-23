@@ -40,7 +40,14 @@ class ResConfigSettings(models.TransientModel):
         related='company_id.toc_redirect_uri',
         readonly=False,
     )
-
+    toc_at_username = fields.Char(
+        related='company_id.toc_at_username',
+        readonly=False,
+    )
+    toc_at_password = fields.Char(
+        related='company_id.toc_at_password',
+        readonly=False,
+    )
 
     def set_values(self):
         super().set_values()
