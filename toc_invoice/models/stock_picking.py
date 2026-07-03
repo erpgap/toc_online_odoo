@@ -170,9 +170,10 @@ class StockPicking(models.Model):
                 self.picking_type_id.warehouse_id.partner_id
                 or self.company_id.partner_id
         )
+        partner = self.partner_id or self.company_id.partner_id
         if self.picking_type_code == "incoming":
-            return self.partner_id, warehouse_partner
-        return warehouse_partner, self.partner_id
+            return partner, warehouse_partner
+        return warehouse_partner, partner
 
 
     @staticmethod
@@ -221,12 +222,10 @@ class StockPicking(models.Model):
         # In an internal movement, the fiscal recipient (customer) is the company itself.
         # If outgoing, it's the customer (partner_id).
         customer_partner = self.company_id.partner_id if is_internal else self.partner_id
-        # The unloading address is the partner filled in the picking (so we know where the installation site is)
-        # If none is provided, assume the company's address.
-        delivery_partner = self.partner_id if self.partner_id else self.company_id.partner_id
+        # Loading / unloading derived from the picking's actual direction,
+        # so returns (incoming) are not swapped relative to deliveries.
+        from_partner, delivery_partner = self._get_toc_shipment_partners()
         doc_date = self._get_toc_document_date(service, document_type)
-        warehouse = self.picking_type_id.warehouse_id
-        from_partner = warehouse.partner_id or self.company_id.partner_id
 
         current_datetime = fields.Datetime.now()
         loading_time = (
