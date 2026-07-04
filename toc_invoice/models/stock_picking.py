@@ -312,14 +312,6 @@ class StockPicking(models.Model):
 
             product = move.product_id
             product_id = service.get_or_create_product(product)
-            unit_price = product.standard_price or product.list_price
-            tax = product.taxes_id.filtered(lambda t: t.type_tax_use == "sale")[:1]
-
-            tax_code = "ISE"
-            tax_percentage = 0.0
-            if tax:
-                tax_percentage = round(tax.amount or 0.0, 2)
-                tax_code = {23: "NOR", 13: "INT", 6: "RED", 0: "ISE"}.get(tax_percentage, "NOR")
 
             line_dict = {
                 "item_type": "Product",
@@ -328,10 +320,7 @@ class StockPicking(models.Model):
                 "description": product.display_name[:100],
                 "quantity": done_qty,
                 "unit_of_measure": "un",
-                "unit_price": unit_price,
-                "tax_code": tax_code,
-                "tax_percentage": tax_percentage,
-                "tax_country_region": "PT",
+                "unit_price": 0.0,
             }
 
             lines.append(line_dict)
