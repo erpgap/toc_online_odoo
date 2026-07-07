@@ -817,7 +817,7 @@ class AccountMove(models.Model):
                 move.action_send_invoice_to_toconline()
                 commit_progress(1)
             except Exception as e:
-                _logger.error("TOConline cron invoice retry failed for %s: %s", move.name, e)
+                _logger.debug("TOConline cron invoice retry skipped for %s: %s", move.name, e)
                 self.env.cr.rollback()
 
         pending_cn = self.env['account.move'].search([
@@ -834,5 +834,5 @@ class AccountMove(models.Model):
                 move._send_credit_note_to_toconline()
                 commit_progress(1)
             except Exception as e:
-                _logger.error("TOConline cron credit note retry failed for %s: %s", move.name, e)
+                _logger.debug("TOConline cron credit note retry skipped for %s: %s", move.name, e)
                 self.env.cr.rollback()
