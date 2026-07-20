@@ -38,6 +38,7 @@ class AccountMove(models.Model):
     toc_document_id = fields.Char(string="TOConline Document Number")
     toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
     toc_communication_code = fields.Char(string="AT Communication Code", copy=False)
+    toc_at_communication_status = fields.Char(string="AT Communication Status", copy=False, readonly=True)
 
     toc_display_number = fields.Char(string="TOConline Number. (Visualization)", compute="_compute_toc_display_number", store=True)
 
@@ -179,6 +180,7 @@ class AccountMove(models.Model):
             'invoice': _('Invoice Send'),
             'credit_note': _('Credit Note Send'),
             'cancel': _('Cancellation'),
+            'at_communication': _('AT Communication'),
         }
         type_label = type_labels.get(request_type, request_type)
         status_label = _('Success') if success else _('Error')

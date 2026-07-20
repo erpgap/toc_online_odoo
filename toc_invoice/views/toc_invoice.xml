@@ -101,6 +101,8 @@
                 <field name="checkbox" class="my-green-checkbox" string="TOConline"
                         readonly="toc_status == 'sent' or toc_status == 'cancelled'"  invisible="toc_status != 'sent'"/>
                 <field name="l10npt_vat_exempt_reason" invisible="is_l10npt_vat_enabled" readonly="sale_order_count &gt; 0 or state == 'posted'"/>
+                <field name="toc_communication_code" readonly="1" invisible="not toc_communication_code"/>
+                <field name="toc_at_communication_status" readonly="1" invisible="not toc_at_communication_status"/>
             </xpath>
 
             <xpath expr="//field[@name='partner_id']" position="after">

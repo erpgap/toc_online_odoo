@@ -13,6 +13,16 @@ from markupsafe import Markup
 _logger = logging.getLogger(__name__)
 
 TOC_TIMEOUT = 120
+AT_DOCUMENT_TYPES = {
+    "FT": "sales_document",
+    "FR": "sales_document",
+    "FS": "sales_document",
+    "NC": "sales_document",
+    "ND": "sales_document",
+    "GR": "shipment_document",
+    "GD": "shipment_document",
+    "GT": "shipment_document",
+}
 
 
 class TocOnlineService:
@@ -228,7 +238,12 @@ class TocOnlineService:
     # B. HTTP request layer
     # -----------------------------------------------------------------
 
-    def _send_request(self, method, endpoint, payload=None):
+    def _send_request(self, method, endpoint, payload=None, raise_on_error=True):
+        """Send a request to TOConline.
+
+        :param raise_on_error: when False the response is returned as-is so the caller can
+            inspect the status code instead of getting a ``UserError``
+        """
         url = f"{self.base_url}{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
@@ -241,7 +256,8 @@ class TocOnlineService:
                 method, url, json=payload, headers=headers, timeout=TOC_TIMEOUT,
             )
             _logger.debug("Response [%s]: %s", response.status_code, response.text)
-            self._handle_response_errors(response)
+            if raise_on_error:
+                self._handle_response_errors(response)
             return response
         except requests.exceptions.Timeout:
             _logger.error("Timeout while trying to access %s %s", method.upper(), url)
@@ -689,37 +705,81 @@ class TocOnlineService:
     # J. AT communication
     # -----------------------------------------------------------------
 
+    def _request_at_communication(self, payload):
+        """Call the AT web service endpoint.
+
+        The TOConline documentation is inconsistent about the verb: the endpoint
+        specification declares PATCH while the prose and the curl example use POST.
+        POST is tried first, and a gateway rejection (404/405, "No rule found for this
+        request") falls back to PATCH with the same payload.
+        """
+        response = self._send_request(
+            'POST', AT_COMMUNICATION_ENDPOINT, payload=payload, raise_on_error=False,
+        )
+        if response.status_code in (404, 405):
+            _logger.info(
+                "TOConline rejected POST %s (%s), retrying with PATCH",
+                AT_COMMUNICATION_ENDPOINT, response.status_code,
+            )
+            response = self._send_request(
+                'PATCH', AT_COMMUNICATION_ENDPOINT, payload=payload, raise_on_error=False,
+            )
+        return response
+
     def communicate_to_at(self, record, document_id, document_type):
+        """Communicate a TOConline document to the Portuguese Tax Authority.
+
+        :param document_type: Odoo/TOConline document code (FT, NC, GR, GD, GT)
+        :return: True when the document was accepted by the AT web service
+        """
         at_user = self.company.toc_at_username
         at_pass = self.company.toc_at_password
 
         if not at_user or not at_pass:
             record.message_post(body=_("AT credentials missing, skipping communication"))
-            return True
+            return False
+
+        at_document_type = AT_DOCUMENT_TYPES.get(document_type)
+        if not at_document_type:
+            _logger.warning("No AT document type mapped for %s", document_type)
+            record.message_post(
+                body=_("AT communication skipped: unsupported document type %s") % document_type
+            )
+            return False
 
         payload_at = {
             "data": {
                 "type": "send_document_at_webservice",
                 "id": document_id,
                 "attributes": {
-                    "document_type": document_type,
+                    "document_type": at_document_type,
                     "entity_username": at_user,
                     "entity_password": base64.b64encode(at_pass.encode("utf-8")).decode("utf-8"),
                 },
             }
         }
         try:
-            response = self._send_request(
-                'POST', "/api/send_document_at_webservice", payload=payload_at,
-            )
-            if response.status_code == 200:
-                at_data = response.json().get("data", {}).get("attributes", {})
-                communication_code = at_data.get("communication_code")
-                record.toc_communication_code = communication_code
-                record.message_post(body=_("AT Communication Code: %s") % communication_code)
-                return True
-            else:
-                record.message_post(body=_("AT communication fail: %s") % response.status_code)
+            response = self._request_at_communication(payload_at)
         except Exception as e:
             record.message_post(body=_("AT communication fail: %s") % e)
+            record._log_toc_transmission('at_communication', success=False, error_message=str(e))
+            return False
+
+        if response.status_code != 200:
+            error = response.text or 'HTTP %s' % response.status_code
+            record.message_post(body=_("AT communication fail: %s") % error)
+            record._log_toc_transmission('at_communication', success=False, error_message=error)
+            return False
+
+        at_data = response.json().get("data", {}).get("attributes", {})
+        record.write({
+            'toc_communication_code': at_data.get("communication_code"),
+            'toc_at_communication_status': at_data.get("communication_status"),
+        })
+        record.message_post(body=_(
+            "AT Communication Code: %(code)s\nStatus: %(status)s\n%(message)s",
+            code=at_data.get("communication_code") or '/',
+            status=at_data.get("communication_status") or '/',
+            message=at_data.get("communication_message") or '',
+        ))
         return True

@@ -29,6 +29,7 @@ class StockPicking(models.Model):
     toc_document_id = fields.Char("TOConline Document ID" , copy=False)
     toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
     toc_communication_code = fields.Char("AT Communication Code", copy=False)
+    toc_at_communication_status = fields.Char("AT Communication Status", copy=False, readonly=True)
     use_license_plate = fields.Boolean(string='User License Plate')
     vehicle_id = fields.Many2one('fleet.vehicle', string='Vehicle')
 
@@ -38,6 +39,7 @@ class StockPicking(models.Model):
             'GR': _('Guia de Remessa Send'),
             'GD': _('Guia de Devolução Send'),
             'GT': _('Guia de Transporte Send'),
+            'at_communication': _('AT Communication'),
         }
         type_label = type_labels.get(request_type, request_type)
         status_label = _('Success') if success else _('Error')
