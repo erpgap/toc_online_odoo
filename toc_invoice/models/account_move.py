@@ -470,20 +470,25 @@ class AccountMove(models.Model):
                     "You cannot confirm this invoice because a previous invoice (%s) is still in draft."
                 ) % ref)
 
-            move.action_send_invoice_to_toconline()
-            move._handle_credit_note_posting()
-            if move.toc_status != 'sent' or move.checkbox != True:
-                move.write({
-                    'toc_status': 'error',
-                })
-                raise UserError(
-                    _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
+            if move.move_type == 'out_refund':
+                move._handle_credit_note_posting()
+                if move.toc_status_credit_note != 'sent':
+                    raise UserError(
+                        _("It was not possible to send this credit note to TOConline. Please check the data and try again."))
+            else:
+                move.action_send_invoice_to_toconline()
+                if move.toc_status != 'sent' or move.checkbox != True:
+                    move.write({
+                        'toc_status': 'error',
+                    })
+                    raise UserError(
+                        _("It was not possible to send this invoice to TOConline. Please check the data and try again."))
         return res
 
     def action_send_invoice_to_toconline(self):
 
         if self:
-            invoices_to_send = self
+            invoices_to_send = self.filtered(lambda m: m.move_type == 'out_invoice')
         else:
             invoices_to_send = self.env['account.move'].search([
                 ('state', '=', 'posted'),
