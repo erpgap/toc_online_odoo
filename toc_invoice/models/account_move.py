@@ -575,8 +575,20 @@ class AccountMove(models.Model):
         lines = []
         global_exemption_reason = None
 
-        for line in record.invoice_line_ids:
-            product_id = self.get_or_create_product_in_toconline(access_token, line.product_id, company=record.company_id)
+        product_lines = record.invoice_line_ids.filtered(
+            lambda l: l.display_type == 'product' and not l.is_downpayment
+        )
+        for line in product_lines:
+            product = line.product_id
+            if product:
+                item_id = self.get_or_create_product_in_toconline(access_token, product, company=record.company_id)
+                item_code = product.default_code
+                description = f"{line.name}" if line.name and line.name != product.name else product.name
+            else:
+                # Description-only line (no product): send it as a free-text line.
+                item_id = None
+                item_code = ''
+                description = line.name or ''
             tax_percentage = sum(t.amount for t in line.tax_ids) if line.tax_ids else 0
             tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
 
@@ -587,9 +599,9 @@ class AccountMove(models.Model):
                     raise UserError(_("0% VAT but no exemption reason."))
 
             lines.append({
-                "item_id": product_id,
-                "item_code": line.product_id.default_code,
-                "description": f"{line.name}" if line.name and line.name != line.product_id.name else line.product_id.name,
+                "item_id": item_id,
+                "item_code": item_code,
+                "description": description,
                 "quantity": line.quantity,
                 "unit_price": line.price_unit,
                 "tax_code": tax_info["code"],
@@ -915,13 +927,24 @@ class AccountMove(models.Model):
             raise UserError(_("No lines found on the credit note."))
 
         lines = []
-        for line in self.invoice_line_ids:
+        credit_note_lines = self.invoice_line_ids.filtered(
+            lambda l: l.display_type == 'product' and not l.is_downpayment
+        )
+        for line in credit_note_lines:
             product = line.product_id
             quantity = line.quantity
             unit_price = line.price_unit
             tax_percentage = sum(line.tax_ids.mapped('amount'))
             tax_info = self.get_tax_info(tax_percentage, tax_region, filtered_taxes)
             tax_code = tax_info["code"]
+
+            if product:
+                item_code = product.default_code
+                description = f"{line.name}" if line.name and line.name != product.name else product.name
+            else:
+                # Description-only line (no product): send it as a free-text line.
+                item_code = ''
+                description = line.name or ''
 
             exemption_reason = None
             if tax_percentage == 0:
@@ -934,8 +957,8 @@ class AccountMove(models.Model):
 
             lines.append({
                 "item_id": None,
-                "item_code": product.default_code,
-                "description": f"{line.name}" if line.name and line.name != line.product_id.name else line.product_id.name,
+                "item_code": item_code,
+                "description": description,
                 "quantity": quantity,
                 "unit_price": unit_price,
                 "tax_code": tax_code,
