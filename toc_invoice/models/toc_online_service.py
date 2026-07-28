@@ -23,6 +23,7 @@ AT_DOCUMENT_TYPES = {
     "GD": "shipment_document",
     "GT": "shipment_document",
 }
+AT_COMMUNICATION_ENDPOINT = "/send_document_at_webservice"
 
 
 class TocOnlineService:
