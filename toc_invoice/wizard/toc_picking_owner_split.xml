@@ -1,0 +1,23 @@
+<odoo>
+  <record id="view_toc_picking_owner_split" model="ir.ui.view">
+    <field name="name">toc.picking.owner.split.wizard.form</field>
+    <field name="model">toc.picking.owner.split.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Split Transfer by Stock Owner">
+        <p>
+          This transfer contains stock belonging to different owners. Each owner needs
+          its own transport document, so the transfer will be split: goods owned by your
+          company keep this transfer and travel under a <b>Guia de Remessa</b>, while the
+          goods of each other owner move to a new transfer and travel under a
+          <b>Guia de Transporte</b>.
+        </p>
+        <field name="split_summary" readonly="1" nolabel="1"/>
+        <field name="pick_ids" invisible="1"/>
+        <footer>
+          <button string="Split and Validate" type="object" name="action_confirm" class="btn-primary"/>
+          <button string="Cancel" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>

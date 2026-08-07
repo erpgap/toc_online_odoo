@@ -1,10 +1,13 @@
 import logging
 import base64
+from collections import defaultdict
+
 import pytz
 import requests
 
-from odoo import models, fields, _
+from odoo import models, fields, api, Command, _
 from odoo.exceptions import UserError
+from odoo.tools import float_compare
 from markupsafe import Markup
 
 _logger = logging.getLogger(__name__)
@@ -32,17 +35,136 @@ class StockPicking(models.Model):
     # SEND GR / GT / GD
     # =====================================================
 
+    def _pre_action_done_hook(self):
+        # A TOConline document covers a single stock owner.
+        if not self.env.context.get("skip_owner_split"):
+            pickings_to_split = self.filtered(lambda p: p._toc_needs_owner_split())
+            if pickings_to_split:
+                return pickings_to_split._action_generate_owner_split_wizard()
+        return super()._pre_action_done_hook()
+
     def button_validate(self):
         res = super().button_validate()
         for picking in self:
-            if picking.state == "done" and picking.company_id.toc_online_enabled:
-                if picking.picking_type_code == "outgoing":
-                    picking._send_transport_doc_to_toconline(document_type="GR")
-                elif picking.picking_type_code == "internal":
-                    picking._send_transport_doc_to_toconline(document_type="GT")
-                elif picking._is_delivery_return():
-                    picking._send_transport_doc_to_toconline(document_type="GD")
+            if not picking.company_id.toc_online_enabled or picking.state != "done":
+                continue
+            document_type = picking._toc_shipment_document_type()
+            if document_type:
+                picking._send_transport_doc_to_toconline(document_type=document_type)
         return res
+
+    # =====================================================
+    # STOCK OWNERSHIP (consignment)
+    # =====================================================
+
+    def _toc_done_move_lines(self):
+        self.ensure_one()
+        return self.move_line_ids.filtered(lambda ml: ml.quantity > 0)
+
+    def _toc_stock_owner(self):
+        """External owner of the stock being moved, empty when it is ours."""
+        self.ensure_one()
+        owners = self._toc_done_move_lines().owner_id
+        return (owners - self.company_id.partner_id)[:1]
+
+    def _toc_owner_groups(self):
+        """Group the quantities being moved by the owner of the stock.
+
+        :return: {owner record (empty when company-owned): stock.move.line recordset}
+        """
+        self.ensure_one()
+        company_partner = self.company_id.partner_id
+        groups = defaultdict(lambda: self.env["stock.move.line"])
+        for line in self._toc_done_move_lines():
+            owner = line.owner_id - company_partner
+            groups[owner] |= line
+        return groups
+
+    def _toc_needs_owner_split(self):
+        """Whether this transfer carries stock from more than one owner."""
+        self.ensure_one()
+        if not self.company_id.toc_online_enabled or self.picking_type_code != "outgoing":
+            return False
+        return len(self._toc_owner_groups()) > 1
+
+    def _toc_shipment_document_type(self):
+        """TOConline document code for this transfer: GR, GT or GD."""
+        self.ensure_one()
+        if self.picking_type_code == "outgoing":
+            return "GT" if self._toc_stock_owner() else "GR"
+        if self._is_delivery_return():
+            return "GD"
+        if self.picking_type_code == "internal":
+            return "GT"
+        return False
+
+    def _action_generate_owner_split_wizard(self):
+        return {
+            "name": _("Split Transfer by Stock Owner"),
+            "type": "ir.actions.act_window",
+            "res_model": "toc.picking.owner.split.wizard",
+            "view_mode": "form",
+            "views": [(self.env.ref("toc_invoice.view_toc_picking_owner_split").id, "form")],
+            "target": "new",
+            "context": dict(self.env.context, default_pick_ids=[Command.set(self.ids)]),
+        }
+
+    def _toc_split_by_owner(self):
+        """Split each transfer so it only carries stock from a single owner.
+
+        :return: the newly created stock.picking records
+        """
+        new_pickings = self.env["stock.picking"]
+        for picking in self:
+            groups = picking._toc_owner_groups()
+            if len(groups) <= 1:
+                continue
+            owners = [owner for owner in groups if owner]
+            if len(owners) == len(groups):
+                # Nothing company-owned: the first owner keeps the original transfer.
+                owners = owners[1:]
+            for owner in owners:
+                new_pickings |= picking._toc_extract_owner_picking(owner, groups[owner])
+        return new_pickings
+
+    def _toc_extract_owner_picking(self, owner, move_lines):
+        """Move ``move_lines``, which all belong to ``owner``, into a new transfer."""
+        self.ensure_one()
+        new_picking = self._create_backorder_picking()
+        if not owner.company_id or owner.company_id == self.company_id:
+            new_picking.owner_id = owner
+
+        original_moves = move_lines.move_id
+        moves_to_extract = self.env["stock.move"]
+        for move in original_moves:
+            lines = move_lines.filtered(lambda ml: ml.move_id == move)
+            fully_owned = lines == move.move_line_ids.filtered(lambda ml: ml.quantity > 0)
+            fully_done = float_compare(
+                move.quantity, move.product_uom_qty,
+                precision_rounding=move.product_uom.rounding,
+            ) >= 0
+            if fully_owned and fully_done:
+                moves_to_extract |= move
+                continue
+            # Shared with another owner or leaving a backorder: peel off this owner's share.
+            qty = sum(lines.mapped("quantity_product_uom"))
+            new_move = self.env["stock.move"].create(move._split(qty))
+            new_move.with_context(
+                bypass_entire_pack=True, bypass_procurement_creation=True,
+            )._action_confirm(merge=False)
+            lines.write({"move_id": new_move.id})
+            moves_to_extract |= new_move
+
+        moves_to_extract.write({"picking_id": new_picking.id, "picked": True})
+        moves_to_extract.move_line_ids.write({"picking_id": new_picking.id})
+        # Reservation moved between moves, on both sides of the split.
+        (original_moves | moves_to_extract)._recompute_state()
+        self.message_post(body=_(
+            "Transfer %(picking)s created for the stock owned by %(owner)s.",
+            picking=new_picking._get_html_link(),
+            owner=owner.display_name,
+        ))
+        return new_picking
 
     def _is_delivery_return(self):
         self.ensure_one()
@@ -83,7 +205,9 @@ class StockPicking(models.Model):
         if self.toc_status == "sent":
             return
 
-        is_internal = document_type == "GT"
+        # A delivery of third-party stock is a GT too, so the picking type -- not the
+        # document code -- tells an internal movement apart from a delivery.
+        is_internal = self.picking_type_code == "internal"
         is_return = document_type == "GD"
 
         if not is_internal and not self.partner_id:
@@ -169,7 +293,6 @@ class StockPicking(models.Model):
             parent_document_reference=parent_document_reference,
             tax_exemption_reason_id=tax_exemption_reason_id,
         )
-
         response = toc_api.toc_request(
             method="POST",
             url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents",
@@ -197,7 +320,9 @@ class StockPicking(models.Model):
                             tax_exemption_reason_id=None):
         """Build the TOConline payload for a transport document (GR/GT/GD)."""
         self.ensure_one()
-        is_internal = document_type == "GT"
+        # In an internal movement the fiscal recipient is the company itself; a
+        # delivery keeps its customer even when it travels under a GT.
+        is_internal = self.picking_type_code == "internal"
 
         customer_partner = self.company_id.partner_id if is_internal else self.partner_id
         from_partner, to_partner = self._get_toc_shipment_partners()
@@ -244,6 +369,14 @@ class StockPicking(models.Model):
             "tax_exemption_reason_id": tax_exemption_reason_id,
             "lines": lines,
         }
+        # Only a delivery names the owner of goods that are not ours.
+        stock_owner = self._toc_stock_owner()
+        if stock_owner and self.picking_type_code == "outgoing":
+            payload["notes"] = _(
+                "Goods owned by %(name)s (VAT %(vat)s)",
+                name=stock_owner.name,
+                vat=stock_owner.vat or "/",
+            )[:400]
         if self.use_license_plate and self.vehicle_id.license_plate:
             payload["vehicle_registration"] = self.vehicle_id.license_plate
         if parent_document_reference:
