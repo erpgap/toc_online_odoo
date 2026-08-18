@@ -294,7 +294,7 @@ class StockPicking(models.Model):
                 or self.company_id.partner_id
         )
         partner = self.partner_id or self.company_id.partner_id
-        if self.picking_type_code == "incoming":
+        if self.picking_type_code in ["incoming", "internal"]:
             return partner, warehouse_partner
         return warehouse_partner, partner
 
