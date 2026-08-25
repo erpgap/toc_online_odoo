@@ -164,8 +164,8 @@ class StockPicking(models.Model):
         self._log_toc_transmission(document_type, success=True)
 
         if self.toc_document_id:
-            self._download_and_attach_toc_pdf(service, document_type=document_type)
             service.communicate_to_at(self, self.toc_document_id, document_type)
+            self._download_and_attach_toc_pdf(service, document_type=document_type)
 
     def _is_delivery_return(self):
         self.ensure_one()

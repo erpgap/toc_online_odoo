@@ -306,11 +306,11 @@ class AccountMove(models.Model):
 
                         toc_document_id = response_data.get("id")
                         if toc_document_id:
+                            service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
                             service.download_and_attach_pdf(
                                 record, toc_document_id, f"Fatura_{record.name}.pdf",
                                 message=_("PDF successfully downloaded and attached to the invoice."),
                             )
-                            service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
                     else:
                         err = getattr(response, 'text', None) or 'HTTP %s' % getattr(response, 'status_code', '?')
                         record._log_toc_transmission('invoice', success=False, error_message=err)
@@ -530,11 +530,11 @@ class AccountMove(models.Model):
 
                 toc_document_id = str(record.toc_document_id)
                 if toc_document_id:
+                    service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
                     service.download_and_attach_pdf(
                         record, toc_document_id, f"Fatura_{record.name}.pdf",
                         message=_("PDF successfully downloaded and attached to the invoice."),
                     )
-                    service.communicate_to_at(record, toc_document_id, record._get_toc_document_type())
 
             except Exception as e:
                     raise UserError(_(
@@ -733,11 +733,11 @@ class AccountMove(models.Model):
                     records.message_post(body=Markup(msg))
                 toc_document_id = response_data.get("id")
                 if toc_document_id:
+                    service.communicate_to_at(records, toc_document_id, "NC")
                     service.download_and_attach_pdf(
                         records, toc_document_id, f"Fatura_{records.name}.pdf",
                         message=_("PDF successfully downloaded and attached to the invoice."),
                     )
-                    service.communicate_to_at(records, toc_document_id, "NC")
 
     def action_send_invoice_with_attachment(self):
         self.ensure_one()
