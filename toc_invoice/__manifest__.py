@@ -1,6 +1,6 @@
 {
     'name': 'Portugal TOCOnline Integration',
-    'version': '19.0.1.1.0',
+    'version': '19.0.1.2.0',
     'description': 'Integrates Odoo with TOConline for certified invoicing in Portugal: create, cancel, and manage customer invoices and credit notes; register payments; download invoices from TOConline into Odoo; and send official TOConline invoices by email.',
     'summary': 'Portuguese certified invoices using TOCOnline',
     'category': 'Accounting/Accounting',

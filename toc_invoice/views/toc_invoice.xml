@@ -16,6 +16,23 @@
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
 
+            <xpath expr="//div[@id='alerts']" position="after">
+                <field name="toc_at_state" invisible="1"/>
+                <field name="toc_status" invisible="1"/>
+                <div class="alert alert-danger d-flex align-items-center gap-2" role="alert"
+                     invisible="toc_at_state != 'error' or toc_status == 'cancelled'">
+                    <i class="fa fa-exclamation-triangle" title="Warning"/>
+                    <div>
+                        <strong>AT communication failed.</strong>
+                        This document has no AT communication code yet.
+                    </div>
+                    <button name="action_retry_at_communication"
+                            type="object"
+                            string="Retry AT Communication"
+                            class="btn btn-danger btn-sm ms-auto text-nowrap"/>
+                </div>
+            </xpath>
+
             <xpath expr="//div[@class='oe_title']" position="replace">
                 <div class="oe_title" style="display: flex; align-items: center; justify-content: space-between;">
                     <div>

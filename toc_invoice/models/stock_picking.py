@@ -32,6 +32,10 @@ class StockPicking(models.Model):
     toc_pdf_attached = fields.Boolean("TOC PDF Attached", default=False, copy=False)
     toc_communication_code = fields.Char("AT Communication Code", copy=False)
     toc_at_communication_status = fields.Char("AT Communication Status", copy=False, readonly=True)
+    toc_at_state = fields.Selection([
+        ("done", "Communicated"),
+        ("error", "Failed"),
+    ], string="AT Communication State", copy=False, readonly=True)
     use_license_plate = fields.Boolean(string='User License Plate')
     vehicle_id = fields.Many2one('fleet.vehicle', string='Vehicle')
 
@@ -166,6 +170,33 @@ class StockPicking(models.Model):
         if self.toc_document_id:
             service.communicate_to_at(self, self.toc_document_id, document_type)
             self._download_and_attach_toc_pdf(service, document_type=document_type)
+
+    def action_retry_at_communication(self):
+        """Communicate the transfer to the AT again, and download a fresh PDF only if it succeeds."""
+        self.ensure_one()
+        if not self.toc_document_id:
+            raise UserError(_("No TOConline document is linked to %s.") % self.display_name)
+
+        document_type = self._toc_shipment_document_type()
+        if not document_type:
+            raise UserError(_("%s is not a transfer that TOConline documents.") % self.display_name)
+
+        service = TocOnlineService(self.company_id, self.env)
+        if not service.communicate_to_at(self, self.toc_document_id, document_type):
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "type": "danger",
+                    "title": _("AT communication failed"),
+                    "message": _("See the chatter for the reason reported by TOConline."),
+                    "sticky": True,
+                    "next": {"type": "ir.actions.act_window_close"},
+                },
+            }
+
+        self.toc_pdf_attached = False
+        self._download_and_attach_toc_pdf(service, document_type=document_type)
 
     def _is_delivery_return(self):
         self.ensure_one()

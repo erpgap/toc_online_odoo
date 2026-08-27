@@ -4,6 +4,22 @@
         <field name="priority">999</field>
         <field name="inherit_id" ref="stock.view_picking_form" />
         <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <field name="toc_at_state" invisible="1"/>
+                <div class="alert alert-danger d-flex align-items-center gap-2" role="alert"
+                     invisible="toc_at_state != 'error'">
+                    <i class="fa fa-exclamation-triangle" title="Warning"/>
+                    <div>
+                        <strong>AT communication failed.</strong>
+                        This document has no AT communication code yet.
+                    </div>
+                    <button name="action_retry_at_communication"
+                            type="object"
+                            string="Retry AT Communication"
+                            class="btn btn-danger btn-sm ms-auto text-nowrap"/>
+                </div>
+            </xpath>
+
             <xpath expr="//label[@for='carrier_tracking_ref']" position="before">
                 <field name="use_license_plate" invisible="company_id != 1" groups="fleet.fleet_group_user"/>
                 <field name="vehicle_id" invisible="not use_license_plate or company_id != 1" groups="fleet.fleet_group_user"/>

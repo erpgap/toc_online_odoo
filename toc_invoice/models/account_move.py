@@ -39,6 +39,11 @@ class AccountMove(models.Model):
     toc_document_no_credit_note = fields.Char(string="Credit Note Number TOConline")
     toc_communication_code = fields.Char(string="AT Communication Code", copy=False)
     toc_at_communication_status = fields.Char(string="AT Communication Status", copy=False, readonly=True)
+    toc_at_state = fields.Selection([
+        ('done', 'Communicated'),
+        ('error', 'Failed'),
+    ], string="AT Communication State", copy=False, readonly=True)
+    toc_document_id_credit_note = fields.Char(string="TOConline Credit Note ID", copy=False)
 
     toc_display_number = fields.Char(string="TOConline Number. (Visualization)", compute="_compute_toc_display_number", store=True)
 
@@ -375,6 +380,47 @@ class AccountMove(models.Model):
         """Map Odoo move_type to TOConline document_type code."""
         self.ensure_one()
         return "NC" if self.move_type == "out_refund" else "FT"
+
+    def _toc_at_document_id(self, service):
+        """Id of the TOConline document to communicate to the AT."""
+        self.ensure_one()
+        if self.move_type != "out_refund":
+            return self.toc_document_id
+        if self.toc_document_id_credit_note:
+            return self.toc_document_id_credit_note
+        # Credit notes transmitted before the id was stored: resolve it from the number.
+        if not self.toc_document_no_credit_note:
+            return False
+        document = service.get_document_fields_by_number(self.toc_document_no_credit_note)
+        self.toc_document_id_credit_note = str(document['id']) if document.get('id') else False
+        return self.toc_document_id_credit_note
+
+    def action_retry_at_communication(self):
+        """Communicate the document to the AT again, and download a fresh PDF only if it succeeds."""
+        self.ensure_one()
+        service = TocOnlineService(self.company_id, self.env)
+        document_id = self._toc_at_document_id(service)
+        if not document_id:
+            raise UserError(_("No TOConline document is linked to %s.") % self.display_name)
+
+        if not service.communicate_to_at(self, document_id, self._get_toc_document_type()):
+            # Returning an action instead of raising keeps the chatter message posted by the service.
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'type': 'danger',
+                    'title': _("AT communication failed"),
+                    'message': _("See the chatter for the reason reported by TOConline."),
+                    'sticky': True,
+                    'next': {'type': 'ir.actions.act_window_close'},
+                },
+            }
+
+        service.download_and_attach_pdf(
+            self, document_id, f"Fatura_{self.name}.pdf",
+            message=_("PDF downloaded again after the AT communication succeeded."),
+        )
 
     def _get_last_toc_document_date(self, service):
         return service.get_last_document_date(document_type=self._get_toc_document_type())
@@ -714,6 +760,7 @@ class AccountMove(models.Model):
         response_data = response.json()
         self.write({
             'toc_document_no_credit_note': response_data.get('document_no'),
+            'toc_document_id_credit_note': response_data.get('id'),
             'toc_invoice_url': response_data.get('invoice_url', ''),
             'toc_status_credit_note': 'sent'
         })

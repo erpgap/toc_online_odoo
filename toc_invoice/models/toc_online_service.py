@@ -1,12 +1,15 @@
 import base64
 import json
 import logging
+import re
 import requests
+import textwrap
 from datetime import timedelta
 from urllib.parse import urlparse, parse_qs
 
 from odoo import _, fields
 from odoo.exceptions import UserError
+from odoo.tools import html2plaintext
 
 from markupsafe import Markup
 
@@ -24,6 +27,7 @@ AT_DOCUMENT_TYPES = {
     "GT": "shipment_document",
 }
 AT_COMMUNICATION_ENDPOINT = "/send_document_at_webservice"
+AT_ERROR_MAX_LENGTH = 255
 
 
 class TocOnlineService:
@@ -727,6 +731,19 @@ class TocOnlineService:
             )
         return response
 
+    @staticmethod
+    def _format_at_error(error):
+        """Reduce an AT error body to a single readable line, unwrapping gateway HTML pages."""
+        text = (error or '').strip()
+        if not text:
+            return ''
+        if re.match(r'\s*<(?:!doctype|html|\?xml)', text, re.IGNORECASE):
+            title = re.search(r'<title[^>]*>(.*?)</title>', text, re.IGNORECASE | re.DOTALL)
+            # html2plaintext marks headings and bold text up as asterisks, drop them.
+            text = title.group(1) if title else html2plaintext(text).replace('*', '')
+        text = ' '.join(text.split())
+        return textwrap.shorten(text, width=AT_ERROR_MAX_LENGTH, placeholder='...')
+
     def communicate_to_at(self, record, document_id, document_type):
         """Communicate a TOConline document to the Portuguese Tax Authority.
 
@@ -762,13 +779,16 @@ class TocOnlineService:
         try:
             response = self._request_at_communication(payload_at)
         except Exception as e:
-            record.message_post(body=_("AT communication fail: %s") % e)
-            record._log_toc_transmission('at_communication', success=False, error_message=str(e))
+            _logger.warning("AT communication failed for %s: %s", record.display_name, e)
+            error = self._format_at_error(str(e))
+            record.write({'toc_at_state': 'error'})
+            record._log_toc_transmission('at_communication', success=False, error_message=error)
             return False
 
         if response.status_code != 200:
-            error = response.text or 'HTTP %s' % response.status_code
-            record.message_post(body=_("AT communication fail: %s") % error)
+            _logger.warning("AT communication failed for %s: %s", record.display_name, response.text)
+            error = self._format_at_error(response.text) or 'HTTP %s' % response.status_code
+            record.write({'toc_at_state': 'error'})
             record._log_toc_transmission('at_communication', success=False, error_message=error)
             return False
 
@@ -776,6 +796,7 @@ class TocOnlineService:
         record.write({
             'toc_communication_code': at_data.get("communication_code"),
             'toc_at_communication_status': at_data.get("communication_status"),
+            'toc_at_state': 'done',
         })
         record.message_post(body=_(
             "AT Communication Code: %(code)s\nStatus: %(status)s\n%(message)s",
