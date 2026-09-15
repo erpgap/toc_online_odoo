@@ -33,7 +33,7 @@
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
 
-            <xpath expr="//div[@class='oe_title']" position="replace">
+            <xpath expr="//div[hasclass('oe_title')]" position="replace">
                 <div class="oe_title" style="display: flex; align-items: center; justify-content: space-between;">
                     <div>
                         <span class="o_form_label">
@@ -102,7 +102,7 @@
                         invisible="1"/>
             </xpath>
 
-            <xpath expr="//group//div[@class='d-flex']" position="after">
+            <xpath expr="//group//div[hasclass('d-flex')]" position="after">
                 <div style="display: flex; align-items: center; margin-right: 20px;">
                     <label for="checkbox" class="my-green-checkbox" string="TOConline" style="margin-right: 10px;"
                            invisible="toc_status != 'sent'"/>
