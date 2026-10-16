@@ -223,6 +223,15 @@ class AccountMove(models.Model):
         :param field: Field to extract from the document (e.g. "id", "user_id", "country_id")
         :return: Field value if found
         """
+        # Fetch the single document by id: listing all documents fails with
+        # JA019 (too many results) once the account has many documents.
+        if self.toc_document_id:
+            response = self.env['toc.api'].toc_request(
+                method='GET',
+                url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents/{self.toc_document_id}",
+                access_token=access_token
+            )
+            return response.json().get(field)
 
         response =  self.env['toc.api'].toc_request(
             method='GET',
