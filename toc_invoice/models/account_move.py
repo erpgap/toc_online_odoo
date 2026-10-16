@@ -500,7 +500,9 @@ class AccountMove(models.Model):
             return
 
         invoices_by_company = {}
-        for inv in invoices_to_send.filtered(lambda m: m.toc_online_enabled and m.journal_id.send_to_toconline):
+        for inv in invoices_to_send.filtered(
+            lambda m: m.toc_online_enabled and m.journal_id.send_to_toconline and not m.toc_document_id
+        ):
             invoices_by_company.setdefault(inv.company_id, self.env['account.move'])
             invoices_by_company[inv.company_id] |= inv
 
@@ -550,7 +552,14 @@ class AccountMove(models.Model):
 
                         toc_document_id = response_data.get("id")
                         if toc_document_id:
-                            self.download_and_attach_invoice_pdf(record, toc_document_id, access_token)
+                            # The document is already issued in TOConline: a PDF failure
+                            # must not roll back the posting in Odoo.
+                            try:
+                                self.download_and_attach_invoice_pdf(record, toc_document_id, access_token)
+                            except UserError as e:
+                                record.message_post(body=_(
+                                    "The invoice was issued in TOConline but its PDF could not be downloaded: %s"
+                                ) % e)
 
     def _validate_partner_fields(self, partner, invoice):
         missing_fields = []
