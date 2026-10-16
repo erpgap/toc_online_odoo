@@ -215,43 +215,30 @@ class AccountMove(models.Model):
         raise UserError(_(f"Document with number {document_no}not found in TOConline."))
 
     def get_document_field_by_number(self, access_token, document_no, field):
-        """
-       Searches for a document by its number in TOConline and returns the value of the specified field.
+        """Return a single field of the TOConline document with the given number."""
+        return self.get_document_fields_by_number(access_token, document_no).get(field)
 
-        :param access_token: API access token
-        :param document_no: Document number to search for
-        :param field: Field to extract from the document (e.g. "id", "user_id", "country_id")
-        :return: Field value if found
-        """
-        # Fetch the single document by id: listing all documents fails with
-        # JA019 (too many results) once the account has many documents.
-        if self.toc_document_id:
-            response = self.env['toc.api'].toc_request(
-                method='GET',
-                url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents/{self.toc_document_id}",
-                access_token=access_token
-            )
-            return response.json().get(field)
+    def get_document_fields_by_number(self, access_token, document_no):
+        """Fetch a single TOConline document by number and return its full data dict.
 
-        response =  self.env['toc.api'].toc_request(
+        Filters server-side: listing all documents fails with JA019 (too many results).
+        """
+        response = self.env['toc.api'].toc_request(
             method='GET',
-            url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents/",
+            url=f"{self.company_id._get_toc_api_url()}/api/v1/commercial_sales_documents?filter[document_no]={document_no}",
             access_token=access_token
         )
+        data = response.json()
+        if isinstance(data, list):
+            documents = data
+        elif isinstance(data, dict):
+            documents = data.get('data', [])
+        else:
+            documents = []
 
-        if response.status_code != 200:
-            raise UserError(_(f"Error retrieving documents from TOConline: {response.text}"))
-
-        documents = response.json()
-
-        if isinstance(documents, dict) and 'data' in documents:
-            documents = documents['data']
-
-        for doc in documents:
-            if doc.get("document_no") == document_no:
-                return doc.get(field)
-
-        raise UserError(_(f"Document with number {document_no} not found in TOConline."))
+        if not documents:
+            raise UserError(_("Document with number %s not found in TOConline.") % document_no)
+        return documents[0]
 
     def get_taxes_from_toconline(self, access_token, company=None):
         """

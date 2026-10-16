@@ -32,11 +32,11 @@ class AccountPaymentRegister(models.TransientModel):
             invoice = self.env['account.move'].browse(invoice_id)
             document_no = invoice.get_ID_invoice()
 
-            doc_id = invoice.get_document_field_by_number(access_token, document_no, "id")
-            user_id = invoice.get_document_field_by_number(access_token, document_no, "user_id")
-            company_id = invoice.get_document_field_by_number(access_token, document_no, "company_id")
-            customer_id = invoice.get_document_field_by_number(access_token, document_no, "customer_id")
-            ammount = invoice.get_document_field_by_number(access_token, document_no, "gross_total")
+            toc_doc = invoice.get_document_fields_by_number(access_token, document_no)
+            doc_id = toc_doc.get("id")
+            user_id = toc_doc.get("user_id")
+            company_id = toc_doc.get("company_id")
+            customer_id = toc_doc.get("customer_id")
 
             lines = [{
                 "cashed_vat_amount": None,
